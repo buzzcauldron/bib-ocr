@@ -1,8 +1,25 @@
 # bib-ocr
 
 Bibliography-oriented PDF citation extractor. Runs a five-stage cascade, stopping
-as soon as enough citations are found. Designed to be ported into
-[Research Party](https://github.com/buzzcauldron/research-party) once stable.
+as soon as enough citations are found. **Integrated into**
+[Research Party](https://github.com/buzzcauldron/research-party) as compile **Step 2.0 / 2.1**
+(`pack_compiler` + `cli/bib_ocr_adapter.py`) when this package is installed and a `--pdf-dir`
+(or auto-resolved PDF folder) contains PDFs.
+
+## Research Party install
+
+```bash
+# Standalone (any venv):
+pip install "bib-ocr @ git+https://github.com/buzzcauldron/bib-ocr.git"
+
+# From a Research Party checkout (installs this package + PDF stack):
+pip install -e ".[bib_ocr]"
+```
+
+Research Party also needs **system** Tesseract + Poppler (same as below). Optional PNG density
+heatmaps in the compile log use matplotlib: `pip install -e ".[viz]"` here, or add `matplotlib`
+on the RP side. Web/server: set **`RESEARCH_PARTY_PDF_DIR`** to a shared PDF library, or place
+PDFs in a `pdfs/` folder next to the `.bib` — see RP `cli/pdf_dir_infer.py`.
 
 ## Pipeline
 
