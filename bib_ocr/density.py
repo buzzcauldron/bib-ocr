@@ -144,6 +144,13 @@ def ref_section_end_exclusive(density: np.ndarray, ref_header_page: int) -> int:
     short window anchored at the header (not globally) so a mid-document spike does not raise
     the floor to the heavens.
 
+    Many PDFs typeset bibliographies as plain prose ``…, Proceedings …, 2021.`` with **no**
+    DOIs or parenthetical author-year citation markers per line, so density collapses right
+    after the header **+3** ``Bibliography`` boost even though many pages follow. When the
+    first continuation pages after the heading are uniformly below our floor, skip truncation
+    and scan through document end — :func:`~bib_ocr.stages.ref_section.extract` already stops
+    on appendix-style headings via text.
+
     If density is unreliable (no signal), returns ``len(scores)`` so callers fall back to
     scanning remaining pages — pair with text heuristics (appendix headings) downstream.
     """
@@ -159,6 +166,14 @@ def ref_section_end_exclusive(density: np.ndarray, ref_header_page: int) -> int:
         return n
 
     floor = max(1.25, peak * 0.06)
+
+    after = ref_header_page + 1
+    if after < n:
+        probe_stop = min(after + 3, n)
+        probe = scores[after:probe_stop]
+        if len(probe) > 0 and all(float(s) < floor for s in probe):
+            # Heat map is blind to bibliography prose — avoid clipping to header page only.
+            return n
 
     end_exclusive = ref_header_page + 1
     for i in range(ref_header_page, n):

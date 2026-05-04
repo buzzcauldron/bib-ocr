@@ -127,6 +127,59 @@ def _tail_line_stops_refs(line: str) -> bool:
     return bool(_TAIL_STOP_LINES.match(s))
 
 
+_PDF_LINE_NOT_NEW_ENTRY = (
+    r"(?!In\s|On\s|At\s|The\s|An\s|For\s|By\s|We\s|If\s|Proceedings\s|Chapter\s|Volume\s"
+    r"|IEEE\s|ACM\s|Journal\s|Mathematical\s|Operations\s|Transactions\s)"
+)
+
+
+def _split_pdf_prose_bundle(block: str, *, min_entries: int = 35) -> list[str] | None:
+    """
+    Thesis / dissertation lists often put **Given-name-first** authors and mix single-
+    multi-, and dot-initial lines. :func:`_split_ref_entries` was written for SSRN surname-
+    comma starts; merging whole PDF pages makes that mismatch painful. Prefer boundary
+    marks at ``"... and Alice"``, ``Kimon Antonakopoulos. Title``, ``R. Tyrrell Rockafellar
+    and Roger ...``, and ``E. N. Khobotov. Modification ...``.
+    """
+    txt = block.strip()
+    if len(txt) < 4000:
+        return None
+
+    neg = _PDF_LINE_NOT_NEW_ENTRY
+    team = re.compile(
+        rf"\n\s*(?={neg}[A-Z][a-z]{{2,30}}\s+[^\n]{{1,400}}?\band\s+[A-Z])",
+        re.UNICODE,
+    )
+    solo = re.compile(
+        rf"\n\s*(?={neg}[A-Z][a-z]{{2,30}}\s+[A-Z][a-z]{{2,40}}\.\s+[A-Z])",
+        re.UNICODE,
+    )
+    init_team = re.compile(
+        rf"\n\s*(?={neg}(?:[A-Z]\.\s+){{1,3}}[A-Z][a-z]{{2,30}}\s+[^\n]{{0,120}}?\band\s+[A-Z])",
+        re.UNICODE,
+    )
+    dot_init_solo = re.compile(
+        rf"\n\s*(?={neg}(?:[A-Z]\.\s+){{1,3}}[A-Z][a-z]{{2,40}}\.\s+[A-Z])",
+        re.UNICODE,
+    )
+
+    bounds: set[int] = {0}
+    for rx in (team, solo, init_team, dot_init_solo):
+        for m in rx.finditer(txt):
+            bounds.add(m.start())
+    spans = sorted(bounds)
+
+    slices: list[str] = []
+    for a, b in zip(spans, spans[1:]):
+        frag = txt[a:b].strip()
+        if len(frag) > 25:
+            slices.append(frag)
+
+    if len(slices) < min_entries:
+        return None
+    return slices
+
+
 def _split_ref_entries(block: str) -> list[str]:
     """Split a raw reference block into individual reference strings."""
     block = _pre_split_glued_refs(block.strip())
@@ -244,14 +297,14 @@ def extract(
         except Exception:
             ref_end_exclusive = n_pages
 
-    # Process each page individually to preserve natural blank-line separators.
-    # References rarely span page breaks in standard academic PDFs.
-    # The first page needs its section header stripped before splitting.
-    _YEAR_RE = re.compile(r"\b(1[5-9]\d{2}|20[0-2]\d)\b")
+    # Join bibliography pages before splitting — PDF line-wrap and page breaks sit in the middle
+    # of logical entries; per-page splitting produces fragments ("York, 2021") and drops cites.
+    _YEAR_RE = re.compile(r"\b(?:1[5-9]\d{2}|20\d{2})\b")
     results: list[dict] = []
     seen_text: set[str] = set()
-    first_ref_page = True
 
+    mega_parts: list[str] = []
+    first_ref_page = True
     for i in range(ref_start_page, ref_end_exclusive):
         page_t = page_texts.get(i, "")
         if not page_t.strip():
@@ -268,24 +321,40 @@ def extract(
             break
 
         page_t = page_t.strip()
+        mega_parts.append(page_t)
 
-        for entry in _split_ref_entries(page_t):
-            if not _YEAR_RE.search(entry):
-                continue  # journal-fragment line, not a reference
-            key = entry[:60]
-            if key in seen_text:
-                continue
-            seen_text.add(key)
-            doi_match = _DOI_RE.search(entry)
-            if doi_match:
-                doi = doi_match.group(1).rstrip(".,;)")
-            else:
-                doi = _infer_preprint_doi(entry)
-            results.append({
-                "text": entry,
-                "doi": doi,
-                "page": i,
-                "stage": "ref_section",
-            })
+    if not mega_parts:
+        return results
+
+    mega = "\n".join(mega_parts)
+    mega_prep = _pre_split_glued_refs(mega)
+    prose_slices = _split_pdf_prose_bundle(mega_prep)
+    if prose_slices is None:
+        split_candidates = _split_ref_entries(mega)
+    else:
+        split_candidates = prose_slices
+
+    for entry in split_candidates:
+        if not _YEAR_RE.search(entry):
+            continue  # journal-fragment line, not a reference
+        key = entry[:60]
+        if key in seen_text:
+            continue
+        seen_text.add(key)
+        # Page-level provenance: merged bibliography spans many pages; density-based
+        # character offsets are fragile after line re-glue. Anchor to the section start.
+        page_i = ref_start_page
+
+        doi_match = _DOI_RE.search(entry)
+        if doi_match:
+            doi = doi_match.group(1).rstrip(".,;)")
+        else:
+            doi = _infer_preprint_doi(entry)
+        results.append({
+            "text": entry,
+            "doi": doi,
+            "page": page_i,
+            "stage": "ref_section",
+        })
 
     return results

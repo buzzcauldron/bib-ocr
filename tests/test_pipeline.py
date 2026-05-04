@@ -100,6 +100,15 @@ def test_ref_section_end_exclusive_stops_when_heatmap_totals_drop() -> None:
     assert ref_section_end_exclusive(dm, 25) == 29
 
 
+def test_ref_section_end_exclusive_when_probe_pages_are_density_blind() -> None:
+    """Dissertation-style bibliography: header page hot (+section boost); prose refs score 0."""
+    from bib_ocr.density import ref_section_end_exclusive
+
+    dm = np.zeros((50, 10), dtype=np.float32)
+    dm[40, :] = 30.0  # Bibliography heading + opening lines only
+    assert ref_section_end_exclusive(dm, 40) == 50
+
+
 def test_result_shape(monkeypatch, tiny_pdf):
     import bib_ocr.stages.doi_scan as doi_scan
 
