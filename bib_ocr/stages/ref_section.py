@@ -31,6 +31,17 @@ _SECTION_HEADERS = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
+# Stop bibliography extraction when proofs / appendix content begins (SSRNecon pattern).
+_TAIL_STOP_LINES = re.compile(
+    r"(?im)^\s*(?:"
+    r"appendix\s*[a-z]?\s*[\.\:]?|online\s+appendix\b|supplementary\s+materials?\b|"
+    r"(?:technical\s+|online\s+|supplementary\s+)?appendix\b|"
+    r"a\s+proofs\b|"  # “A Proofs We present…”
+    r"proofs\s+we\s+present\b|"
+    r"internet\s+appendix\b"
+    r")"
+)
+
 _DOI_RE = re.compile(r"\b(10\.\d{4,9}/[^\s\"'<>,;)]+)", re.ASCII)
 
 # Preprint patterns → inferred DOI
@@ -92,8 +103,38 @@ def _page_text(pdf_path: Path, reader, page_idx: int) -> str:
     return text
 
 
+# Concatenated author–year refs: ``…. 5962739. Author, Given (yyyy)``.
+_YEAR_GLUE = re.compile(
+    # Only glue breaks like ``…(1999). Author, …``, ``…preprint 123. Author``, ``…858. Author``.
+    # Never split after initials ``J. Sherbino`` — require digit or ")" before ".".
+    r"(?<=[\d\)])\.\s+(?=[A-Z][^\n]{4,}?,\s*[A-Za-z .\u2019'\-¨\u0326]+\([12]\d{3}\))",
+    flags=re.UNICODE,
+)
+_COMMA_GLUE = re.compile(
+    # ``…preprint 5962739. Author, …`` / ``…114, 1321–1358. Author, …`` — never ``J. Sherbino``.
+    r"(?<=\d)\.\s+(?=[A-Z][A-Za-z\u2019'\-\u02bc]+,\s+(?:and\s+)?[A-Z])",
+    flags=re.UNICODE,
+)
+
+
+def _pre_split_glued_refs(block: str) -> str:
+    """
+    SSRN/AEA refs often concatenate entries (...preprint 5962739. Ben-Porath…) with no
+    blank line, or glue across a newline (``358.\\nHolmström, …``). Prefer the stricter
+    ``Surname … (yyyy)`` boundary so diacritics in surnames do not break comma-only rules.
+    """
+    block = _YEAR_GLUE.sub(".\n", block)
+    return _COMMA_GLUE.sub(".\n", block)
+
+
+def _tail_line_stops_refs(line: str) -> bool:
+    s = line.strip()
+    return bool(_TAIL_STOP_LINES.match(s))
+
+
 def _split_ref_entries(block: str) -> list[str]:
     """Split a raw reference block into individual reference strings."""
+    block = _pre_split_glued_refs(block.strip())
     # [1] / [12] bracket-numbered refs
     bracket_split = re.split(r"\n(?=\[\d{1,3}\])", block)
     if len(bracket_split) > 2:
@@ -119,16 +160,24 @@ def _split_ref_entries(block: str) -> list[str]:
     #   ",\s[A-Z]"  → "Smith, John"
     #   " and [A-Z]" → "Smith and Jones"
     #   " [A-Z][a-z]+ [A-Z]" → "Van Den Berg..."  (multiple surname words)
+    # Split on newline before a new bibliography line. The main branch requires a plain
+    # Latin surname opener; the alternate allows anything up to the first comma (Unicode
+    # names, “Holmstr\n+¨om”) so “…358.\\nHolmstr¨om, Bengt (1979)…” is not glued to the
+    # prior entry.
     _AUTH_START = re.compile(
         r"\n(?="
-        r"[A-Z][a-z]{1,20}"                             # First surname word
         r"(?:"
-        r",\s+[A-Z]"                                     # ", Firstname" → author-year
-        r"|,\s+\d{4}"                                    # ", YEAR" → inverted format
-        r"|\s+(?:and|&)\s+[A-Z][a-z]"                   # " and Surname"
-        r"|\s+[A-Z][a-z]{1,20},"                        # "Van Den," multi-word surname
+        r"[A-Z][a-z]{1,20}"
+        r"(?:"
+        r",\s+[A-Z]"
+        r"|,\s+\d{4}"
+        r"|\s+(?:and|&)\s+[A-Z][a-z]"
+        r"|\s+[A-Z][a-z]{1,20},"
         r")"
+        r"|"
+        r"[A-Z][^\n,]{2,70},\s*[A-Za-z .\u2019'\-¨\u0326]+\([12]\d{3}\)"
         r")"
+        r")",
     )
     auth_split = _AUTH_START.split(block)
     if len(auth_split) > 4:
@@ -139,13 +188,20 @@ def _split_ref_entries(block: str) -> list[str]:
     return [e.strip() for e in entries if len(e.strip()) > 20]
 
 
-def extract(pdf_path: Path, tail_start: int | None = None) -> list[dict]:
+def extract(
+    pdf_path: Path,
+    tail_start: int | None = None,
+    *,
+    density: object | None = None,
+) -> list[dict]:
     """
     Return list of {"text": str, "doi": str|None, "page": int, "stage": "ref_section"}
     for each detected reference string.
 
     tail_start: first page index to scan (0-based). If None, determined via
                 density analysis falling back to the last _TAIL_PAGES pages.
+    density:    Optional page_density matrix — when set together with detected
+                ``References`` page, trims the scan before appendix/proofs pages.
     """
     try:
         from pypdf import PdfReader
@@ -184,6 +240,15 @@ def extract(pdf_path: Path, tail_start: int | None = None) -> list[dict]:
         # No header found — treat the last 4 pages as reference section
         ref_start_page = max(tail_start, n_pages - 4)
 
+    ref_end_exclusive = n_pages
+    if density is not None:
+        try:
+            from bib_ocr.density import ref_section_end_exclusive as _rs_end_excl
+
+            ref_end_exclusive = int(_rs_end_excl(density, ref_start_page))
+        except Exception:
+            ref_end_exclusive = n_pages
+
     # Process each page individually to preserve natural blank-line separators.
     # References rarely span page breaks in standard academic PDFs.
     # The first page needs its section header stripped before splitting.
@@ -192,7 +257,7 @@ def extract(pdf_path: Path, tail_start: int | None = None) -> list[dict]:
     seen_text: set[str] = set()
     first_ref_page = True
 
-    for i in range(ref_start_page, n_pages):
+    for i in range(ref_start_page, ref_end_exclusive):
         page_t = page_texts.get(i, "")
         if not page_t.strip():
             continue
@@ -201,6 +266,13 @@ def extract(pdf_path: Path, tail_start: int | None = None) -> list[dict]:
             if hm:
                 page_t = page_t[hm.end():]
             first_ref_page = False
+
+        head_nonempty = [ln.strip() for ln in page_t.splitlines() if ln.strip()]
+        # Typical SSRN appendix right after References: leading “A Proofs …”.
+        if head_nonempty and _tail_line_stops_refs(head_nonempty[0]):
+            break
+
+        page_t = page_t.strip()
 
         for entry in _split_ref_entries(page_t):
             if not _YEAR_RE.search(entry):

@@ -90,7 +90,7 @@ def extract(
 
     # Stage 3 — reference section OCR (density-targeted tail_start)
     _ensure_density()
-    s3 = _run(3, "ref_section", ref_section.extract, tail_start=_ref_start)
+    s3 = _run(3, "ref_section", ref_section.extract, tail_start=_ref_start, density=_density_map)
     all_citations.extend(s3)
     ref_hits = len([c for c in s3 if c.get("doi") or c.get("text")])
     if ref_hits >= min_hits:

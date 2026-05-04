@@ -133,6 +133,44 @@ def ref_section_start(density: np.ndarray) -> int:
     return start
 
 
+def ref_section_end_exclusive(density: np.ndarray, ref_header_page: int) -> int:
+    """
+    First page index *after* the contiguous bibliography pocket, inferred from heatmap totals.
+
+    After the References header page, bibliography pages retain elevated citation-marker
+    density while appendix / proofs usually drop toward zero — but we ``max`` peak over a
+    short window anchored at the header (not globally) so a mid-document spike does not raise
+    the floor to the heavens.
+
+    If density is unreliable (no signal), returns ``len(scores)`` so callers fall back to
+    scanning remaining pages — pair with text heuristics (appendix headings) downstream.
+    """
+    scores: np.ndarray = density.sum(axis=1)
+    n = len(scores)
+    if ref_header_page < 0 or ref_header_page >= n:
+        return n
+
+    lookahead = min(32, max(8, n - ref_header_page))
+    window = scores[ref_header_page : ref_header_page + lookahead]
+    peak = float(window.max())
+    if peak <= 1e-6:
+        return n
+
+    floor = max(1.25, peak * 0.06)
+
+    end_exclusive = ref_header_page + 1
+    for i in range(ref_header_page, n):
+        s = float(scores[i])
+        if s >= floor:
+            end_exclusive = i + 1
+            continue
+        # First weak page ends the bibliography run (appendices are usually sparse here).
+        if i > ref_header_page:
+            break
+
+    return min(end_exclusive, n)
+
+
 def render_heatmap(
     density: np.ndarray,
     output_path: str | Path | None = None,
