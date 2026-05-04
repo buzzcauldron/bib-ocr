@@ -45,6 +45,26 @@ def extract(
     all_citations: list[dict] = []
     stages_run: list[str] = []
 
+    # Pre-compute reference density map once; used by Stages 3 & 4 to target OCR.
+    _density_map = None
+    _hot_pages: list[int] | None = None
+    _ref_start: int | None = None
+
+    def _ensure_density() -> None:
+        nonlocal _density_map, _hot_pages, _ref_start
+        if _density_map is not None:
+            return
+        try:
+            from bib_ocr.density import page_density, target_pages, ref_section_start
+            _density_map = page_density(pdf_path)
+            _hot_pages = target_pages(_density_map)
+            _ref_start = ref_section_start(_density_map)
+            if verbose:
+                print(f"  [density] hot pages: {_hot_pages}  ref_start: {_ref_start}")
+        except Exception as exc:
+            if verbose:
+                print(f"  [density] skipped ({exc})")
+
     def _run(stage_num: int, name: str, fn, **kwargs) -> list[dict]:
         if stage_num > max_stage:
             return []
@@ -68,15 +88,16 @@ def extract(
     if len(doi_hits) >= min_hits:
         return _result(all_citations, stages_run, pdf_path)
 
-    # Stage 3 — reference section OCR
-    s3 = _run(3, "ref_section", ref_section.extract)
+    # Stage 3 — reference section OCR (density-targeted tail_start)
+    _ensure_density()
+    s3 = _run(3, "ref_section", ref_section.extract, tail_start=_ref_start)
     all_citations.extend(s3)
     ref_hits = len([c for c in s3 if c.get("doi") or c.get("text")])
     if ref_hits >= min_hits:
         return _result(all_citations, stages_run, pdf_path)
 
-    # Stage 4 — footnote zone scan
-    s4 = _run(4, "footnote_scan", footnote_scan.extract)
+    # Stage 4 — footnote zone scan (density-targeted pages)
+    s4 = _run(4, "footnote_scan", footnote_scan.extract, target_page_indices=_hot_pages)
     all_citations.extend(s4)
     fn_hits = len([c for c in s4 if c.get("doi") or c.get("author")])
     if fn_hits >= min_hits:

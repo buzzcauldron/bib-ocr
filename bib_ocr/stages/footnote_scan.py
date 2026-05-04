@@ -54,10 +54,13 @@ def _ocr_bottom_band(pdf_path: Path, page_idx: int, fraction: float = _FOOTNOTE_
         return ""
 
 
-def extract(pdf_path: Path) -> list[dict]:
+def extract(pdf_path: Path, target_page_indices: list[int] | None = None) -> list[dict]:
     """
     Return list of {"text": str, "doi": str|None, "author": str|None,
     "year": str|None, "page": int, "stage": "footnote_scan"}.
+
+    target_page_indices: if given, only scan these 0-based page indices.
+                         Defaults to all pages (original behavior).
     """
     try:
         from pypdf import PdfReader
@@ -73,8 +76,12 @@ def extract(pdf_path: Path) -> list[dict]:
         return []
 
     results: list[dict] = []
-
-    for page_idx, page in enumerate(reader.pages):
+    page_iter = (
+        ((idx, reader.pages[idx]) for idx in target_page_indices if idx < len(reader.pages))
+        if target_page_indices is not None
+        else enumerate(reader.pages)
+    )
+    for page_idx, page in page_iter:
         try:
             full_text = page.extract_text() or ""
         except Exception:

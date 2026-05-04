@@ -83,10 +83,13 @@ def _split_ref_entries(block: str) -> list[str]:
     return [e.strip() for e in entries if len(e.strip()) > 20]
 
 
-def extract(pdf_path: Path) -> list[dict]:
+def extract(pdf_path: Path, tail_start: int | None = None) -> list[dict]:
     """
     Return list of {"text": str, "doi": str|None, "page": int, "stage": "ref_section"}
     for each detected reference string.
+
+    tail_start: first page index to scan (0-based). If None, determined via
+                density analysis falling back to the last _TAIL_PAGES pages.
     """
     try:
         from pypdf import PdfReader
@@ -102,7 +105,14 @@ def extract(pdf_path: Path) -> list[dict]:
         return []
 
     n_pages = len(reader.pages)
-    tail_start = max(0, n_pages - _TAIL_PAGES)
+
+    if tail_start is None:
+        try:
+            from bib_ocr.density import page_density, ref_section_start
+            dm = page_density(pdf_path)
+            tail_start = ref_section_start(dm)
+        except Exception:
+            tail_start = max(0, n_pages - _TAIL_PAGES)
 
     # Scan tail pages, find the first page with a section header
     ref_start_page: int | None = None

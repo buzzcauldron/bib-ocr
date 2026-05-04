@@ -15,10 +15,12 @@ dependencies = [
     "Pillow>=10.0",
     "regex>=2023.0",
     "bibtexparser>=1.4",
+    "numpy>=1.24",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "coverage", "ruff"]
+viz = ["matplotlib>=3.7"]
+dev = ["pytest>=8", "coverage", "ruff", "matplotlib>=3.7"]
 
 [project.scripts]
 bib-ocr = "bib_ocr.cli:main"

@@ -20,7 +20,18 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--verbose", "-v", action="store_true")
     p.add_argument("--output", "-o", default="-",
                    help="Output path for JSON results (default: stdout)")
+    p.add_argument("--density-map", metavar="PNG",
+                   help="Save a reference-density heat map to this PNG path (requires matplotlib)")
     args = p.parse_args(argv)
+
+    if args.density_map:
+        from .density import page_density, render_heatmap
+        dm = page_density(args.pdf)
+        render_heatmap(dm, args.density_map, title=Path(args.pdf).name)
+        if args.verbose:
+            print(f"Density map written to {args.density_map}", file=sys.stderr)
+        if args.output == "-" and not sys.stdin.isatty():
+            return  # density-only mode if no explicit --output
 
     result = extract(args.pdf, min_hits=args.min_hits, max_stage=args.max_stage, verbose=args.verbose)
 
