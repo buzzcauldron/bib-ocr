@@ -66,8 +66,6 @@ def extract(pdf_path: Path) -> list[dict]:
             if doi and doi not in seen_dois:
                 seen_dois.add(doi)
                 results.append({"doi": doi, "url": uri, "page": page_num, "stage": "link_crawl"})
-            elif not doi and uri.startswith("http"):
-                results.append({"doi": None, "url": uri, "page": page_num, "stage": "link_crawl"})
 
     doc.close()
     return results

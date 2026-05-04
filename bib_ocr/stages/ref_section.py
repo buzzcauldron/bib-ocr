@@ -33,6 +33,26 @@ _SECTION_HEADERS = re.compile(
 
 _DOI_RE = re.compile(r"\b(10\.\d{4,9}/[^\s\"'<>,;)]+)", re.ASCII)
 
+# Preprint patterns → inferred DOI
+# Ordered longest-match first so SSRN beats a bare number match.
+_PREPRINT_PATTERNS: list[tuple[re.Pattern, str]] = [
+    # SSRN: "SSRN preprint 1234567" or "SSRN Working Paper 1234567"
+    (re.compile(r"(?i)\bssrn\b[^0-9]{0,25}(\d{6,8})\b"), "10.2139/ssrn.{0}"),
+    # arXiv: "arXiv:2101.01234" or "arXiv preprint 2101.01234v2"
+    (re.compile(r"(?i)\barxiv[:\s]+([0-9]{4}\.[0-9]{4,5})(?:v\d+)?"), "10.48550/arXiv.{0}"),
+    # NBER: "NBER Working Paper 12345"
+    (re.compile(r"(?i)\bnber\b[^0-9]{0,20}(\d{4,6})\b"), "10.3386/w{0}"),
+]
+
+
+def _infer_preprint_doi(text: str) -> str | None:
+    """Return an inferred DOI for a known preprint repository, or None."""
+    for pattern, template in _PREPRINT_PATTERNS:
+        m = pattern.search(text)
+        if m:
+            return template.format(m.group(1))
+    return None
+
 # Minimum characters for pypdf output to be considered usable
 _MIN_CHARS = 80
 # How many trailing pages to scan for the reference section
@@ -74,12 +94,48 @@ def _page_text(pdf_path: Path, reader, page_idx: int) -> str:
 
 def _split_ref_entries(block: str) -> list[str]:
     """Split a raw reference block into individual reference strings."""
-    # Try splitting on lines that begin with [number] or author-like patterns
-    bracket_split = re.split(r"\n(?=\[\d+\])", block)
+    # [1] / [12] bracket-numbered refs
+    bracket_split = re.split(r"\n(?=\[\d{1,3}\])", block)
     if len(bracket_split) > 2:
         return [e.strip() for e in bracket_split if e.strip()]
-    # Fall back to double-newline or single-newline after a trailing year/period
-    entries = re.split(r"\n{2,}|\n(?=[A-Z][a-z])", block)
+
+    # "1. " / "12. " numbered list
+    numbered_split = re.split(r"\n(?=\d{1,3}\.\s+[A-Z])", block)
+    if len(numbered_split) > 2:
+        return [e.strip() for e in numbered_split if e.strip()]
+
+    # Blank-line separated (most reliable when present)
+    blank_split = [e.strip() for e in re.split(r"\n{2,}", block) if len(e.strip()) > 20]
+    if len(blank_split) > 4:
+        return blank_split
+
+    # Author-year single-newline style (e.g. SSRN/AEA format):
+    # New entry starts with "Surname, Firstname" or "Surname and Co"
+    # Split at \n followed by an uppercase word + comma/space + uppercase letter,
+    # but NOT at mid-reference continuations (which start with lowercase or a
+    # continuation word mid-sentence).
+    #
+    # Pattern: line starts with [A-Z][a-z…] followed by:
+    #   ",\s[A-Z]"  → "Smith, John"
+    #   " and [A-Z]" → "Smith and Jones"
+    #   " [A-Z][a-z]+ [A-Z]" → "Van Den Berg..."  (multiple surname words)
+    _AUTH_START = re.compile(
+        r"\n(?="
+        r"[A-Z][a-z]{1,20}"                             # First surname word
+        r"(?:"
+        r",\s+[A-Z]"                                     # ", Firstname" → author-year
+        r"|,\s+\d{4}"                                    # ", YEAR" → inverted format
+        r"|\s+(?:and|&)\s+[A-Z][a-z]"                   # " and Surname"
+        r"|\s+[A-Z][a-z]{1,20},"                        # "Van Den," multi-word surname
+        r")"
+        r")"
+    )
+    auth_split = _AUTH_START.split(block)
+    if len(auth_split) > 4:
+        return [e.strip() for e in auth_split if len(e.strip()) > 20]
+
+    # Last resort: any capital-starting line
+    entries = re.split(r"\n(?=[A-Z])", block)
     return [e.strip() for e in entries if len(e.strip()) > 20]
 
 
@@ -128,22 +184,41 @@ def extract(pdf_path: Path, tail_start: int | None = None) -> list[dict]:
         # No header found — treat the last 4 pages as reference section
         ref_start_page = max(tail_start, n_pages - 4)
 
-    # Concatenate all pages from ref_start onward
-    ref_block = "\n\n".join(page_texts.get(i, "") for i in range(ref_start_page, n_pages))
-
-    # Strip everything before the header line itself
-    hm = _SECTION_HEADERS.search(ref_block)
-    if hm:
-        ref_block = ref_block[hm.end():]
-
-    entries = _split_ref_entries(ref_block)
+    # Process each page individually to preserve natural blank-line separators.
+    # References rarely span page breaks in standard academic PDFs.
+    # The first page needs its section header stripped before splitting.
+    _YEAR_RE = re.compile(r"\b(1[5-9]\d{2}|20[0-2]\d)\b")
     results: list[dict] = []
-    for entry in entries:
-        doi_match = _DOI_RE.search(entry)
-        results.append({
-            "text": entry,
-            "doi": doi_match.group(1).rstrip(".,;)") if doi_match else None,
-            "page": ref_start_page,
-            "stage": "ref_section",
-        })
+    seen_text: set[str] = set()
+    first_ref_page = True
+
+    for i in range(ref_start_page, n_pages):
+        page_t = page_texts.get(i, "")
+        if not page_t.strip():
+            continue
+        if first_ref_page:
+            hm = _SECTION_HEADERS.search(page_t)
+            if hm:
+                page_t = page_t[hm.end():]
+            first_ref_page = False
+
+        for entry in _split_ref_entries(page_t):
+            if not _YEAR_RE.search(entry):
+                continue  # journal-fragment line, not a reference
+            key = entry[:60]
+            if key in seen_text:
+                continue
+            seen_text.add(key)
+            doi_match = _DOI_RE.search(entry)
+            if doi_match:
+                doi = doi_match.group(1).rstrip(".,;)")
+            else:
+                doi = _infer_preprint_doi(entry)
+            results.append({
+                "text": entry,
+                "doi": doi,
+                "page": i,
+                "stage": "ref_section",
+            })
+
     return results
