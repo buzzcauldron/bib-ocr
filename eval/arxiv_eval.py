@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import urllib.parse
@@ -60,16 +61,22 @@ _SESSION.headers["User-Agent"] = "bib-ocr-eval/0.1 (research; mailto:tvv125@gmai
 # arXiv paper sampling
 # ---------------------------------------------------------------------------
 
-def _arxiv_ids(n: int, categories: list[str]) -> list[str]:
+def _arxiv_ids(n: int, categories: list[str], year: int | None = None) -> list[str]:
     if n <= 0:
         return []
     ids: list[str] = []
     per_cat = max(1, (n + len(categories) - 1) // len(categories))
     for cat in categories:
+        # Restrict to a specific year so S2 has had time to index references.
+        # arXiv date filter: submittedDate:[YYYYMMDD TO YYYYMMDD]
+        if year:
+            query = f"cat:{cat} AND submittedDate:[{year}0101 TO {year}1231]"
+        else:
+            query = f"cat:{cat}"
         url = (
             "https://export.arxiv.org/api/query?"
             + urllib.parse.urlencode({
-                "search_query": f"cat:{cat}",
+                "search_query": query,
                 "start": 0,
                 "max_results": per_cat,
                 "sortBy": "submittedDate",
@@ -82,7 +89,8 @@ def _arxiv_ids(n: int, categories: list[str]) -> list[str]:
                 tree = ET.fromstring(r.read())
             ns = {"a": "http://www.w3.org/2005/Atom"}
             for entry in tree.findall("a:entry", ns):
-                id_url = (entry.find("a:id", ns) or object()).text or ""
+                id_elem = entry.find("a:id", ns)
+                id_url = (id_elem.text or "") if id_elem is not None else ""
                 arxiv_id = id_url.strip("/").split("/")[-1]
                 if arxiv_id and arxiv_id not in ids:
                     ids.append(arxiv_id)
@@ -98,7 +106,9 @@ def _arxiv_ids(n: int, categories: list[str]) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def _s2_dois_for_arxiv(arxiv_id: str) -> set[str]:
-    return _s2_dois(f"arXiv:{arxiv_id}")
+    # Strip version suffix (v1, v2, …) — S2 uses the bare ID
+    bare = re.sub(r"v\d+$", "", arxiv_id, flags=re.IGNORECASE)
+    return _s2_dois(f"arXiv:{bare}")
 
 
 def _s2_dois_for_doi(doi: str) -> set[str]:
@@ -191,27 +201,26 @@ def _local_ground_truth(pdf_path: Path) -> set[str]:
 # Per-paper eval (runs in subprocess)
 # ---------------------------------------------------------------------------
 
-def _eval_one(args: tuple[str, str, str]) -> dict:
+def _eval_one(args: tuple[str, str, str, list[str]]) -> dict:
     """
-    args: (kind, identifier, pdf_dir)
-      kind: "arxiv" | "local"
-      identifier: arxiv_id OR absolute path to local PDF
+    args: (kind, identifier, pdf_path_str, ground_truth_doi_list)
+      kind:             "arxiv" | "local"
+      identifier:       arxiv_id OR original pdf path string (for labelling)
+      pdf_path_str:     absolute path to the already-downloaded PDF
+      ground_truth_dois: list of normalised DOI strings (fetched in main process)
+
+    Network calls (S2, PDF download) are done in the main process so that SSL
+    cert configuration is consistent.  Workers only run bib-ocr extraction.
     """
-    kind, identifier, pdf_dir = args
+    kind, identifier, pdf_path_str, ground_truth_doi_list = args
+    ground_truth = set(ground_truth_doi_list)
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from bib_ocr.pipeline import extract as _extract
 
-    if kind == "arxiv":
-        pdf_path = _download_arxiv_pdf(identifier, Path(pdf_dir))
-        if pdf_path is None:
-            return {"kind": kind, "id": identifier, "error": "download_failed"}
-        ground_truth = _s2_dois_for_arxiv(identifier)
-    else:
-        pdf_path = Path(identifier)
-        if not pdf_path.exists():
-            return {"kind": kind, "id": identifier, "error": "file_not_found"}
-        ground_truth = _local_ground_truth(pdf_path)
+    pdf_path = Path(pdf_path_str)
+    if not pdf_path.exists():
+        return {"kind": kind, "id": identifier, "error": "pdf_not_found"}
 
     try:
         result = _extract(str(pdf_path), min_hits=3, verbose=False)
@@ -303,30 +312,49 @@ def main() -> None:
     ap.add_argument("--categories", nargs="+",
                     default=["cs.IR", "cs.CL", "cs.DL", "econ.GN", "stat.ML"],
                     help="arXiv subject categories")
+    ap.add_argument("--year",       type=int,   default=2023,
+                    help="Sample papers from this year so S2 has indexed their refs (default: 2023)")
     args = ap.parse_args()
 
     pdf_dir = Path(args.pdf_dir)
     pdf_dir.mkdir(exist_ok=True)
 
-    tasks: list[tuple[str, str, str]] = []
+    # ---- Phase 1: collect paper list and prefetch ground truth + PDFs ----
+    # All network calls happen here in the main process so SSL certs are
+    # consistent.  Workers receive a ready (pdf_path, ground_truth_doi_list)
+    # pair and only run bib-ocr — no network needed in subprocesses.
+
+    # (kind, identifier, pdf_path_str, ground_truth_doi_list)
+    tasks: list[tuple[str, str, str, list[str]]] = []
 
     # arXiv papers
     if args.n > 0:
-        print(f"Sampling {args.n} arXiv papers from: {', '.join(args.categories)}")
-        ids = _arxiv_ids(args.n, args.categories)
+        print(f"Sampling {args.n} arXiv papers from: {', '.join(args.categories)} (year={args.year})")
+        ids = _arxiv_ids(args.n, args.categories, year=args.year)
         print(f"  Got {len(ids)} IDs")
-        tasks += [("arxiv", aid, str(pdf_dir)) for aid in ids]
+        print(f"  Downloading PDFs + fetching S2 ground truth …")
+        for i, aid in enumerate(ids, 1):
+            pdf_path = _download_arxiv_pdf(aid, pdf_dir)
+            if pdf_path is None:
+                print(f"    [{i}/{len(ids)}] {aid} — download failed, skipping")
+                continue
+            gt = list(_s2_dois_for_arxiv(aid))
+            print(f"    [{i}/{len(ids)}] {aid} — {len(gt)} S2 refs")
+            tasks.append(("arxiv", aid, str(pdf_path), gt))
 
     # Local PDFs (JSTOR, Zotero, etc.)
     if args.local_dir:
         local_pdfs = sorted(Path(args.local_dir).glob("**/*.pdf"))
         print(f"Found {len(local_pdfs)} local PDFs in {args.local_dir}")
-        tasks += [("local", str(p), str(pdf_dir)) for p in local_pdfs]
+        for p in local_pdfs:
+            gt = list(_local_ground_truth(p))
+            tasks.append(("local", str(p), str(p), gt))
 
     if not tasks:
         print("No papers to evaluate. Use --n or --local-dir.")
         return
 
+    # ---- Phase 2: parallel bib-ocr extraction ----
     results: list[dict] = []
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
         futures = {pool.submit(_eval_one, t): t for t in tasks}
