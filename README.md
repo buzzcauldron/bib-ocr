@@ -23,6 +23,8 @@ PDFs in a `pdfs/` folder next to the `.bib` — see RP `cli/pdf_dir_infer.py`.
 
 ## Pipeline
 
+Default **`min_hits`** is **8** (unique DOIs / citation signals before short-circuiting to the next stage). Override in Python (`extract(..., min_hits=…)`) or CLI (`bib-ocr --min-hits …`). Research Party forwards **`RESEARCH_PARTY_BIB_OCR_MIN_HITS`**.
+
 | Stage | Method | When it runs |
 |-------|--------|-------------|
 | 1. `link_crawl` | PDF hyperlink annotations → DOIs (pymupdf) | Always first |
@@ -33,6 +35,15 @@ PDFs in a `pdfs/` folder next to the `.bib` — see RP `cli/pdf_dir_infer.py`.
 
 Stage 5 is a last resort. Papers almost always have a reference list — if
 stages 1–4 all fail the PDF is likely image-only and needs better scan quality.
+
+## Tests
+
+```bash
+pip install -e ".[dev]"
+pytest -q
+```
+
+Pipeline orchestration is covered with **mocked stages** (no real PDF/OCR). Full PDF tests are optional local runs.
 
 ## Install
 

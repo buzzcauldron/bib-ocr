@@ -13,7 +13,7 @@ from .stages import link_crawl, doi_scan, ref_section, footnote_scan, inline_cra
 
 # A stage is considered "sufficient" if it returns at least this many hits.
 # Downstream callers can override per-call.
-DEFAULT_MIN_HITS = 3
+DEFAULT_MIN_HITS = 8
 
 
 def extract(

@@ -15,4 +15,4 @@ See SOURCES.md for upstream attribution.
 from .pipeline import extract  # noqa: F401
 from .density import page_density, target_pages, ref_section_start, render_heatmap  # noqa: F401
 
-__version__ = "0.1.0"
+__version__ = "0.1.2"
