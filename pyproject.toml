@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bib-ocr"
-version = "0.1.2"
-description = "Bibliography-oriented PDF citation extractor: hyperlinks → DOI scan → ref-section OCR → footnotes → inline crawl"
+version = "0.1.4"
+description = "Bibliography-oriented PDF citation extractor: plaintext DOI scan → hyperlinks → ref-section OCR → footnotes → inline crawl"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

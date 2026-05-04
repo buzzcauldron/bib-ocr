@@ -23,15 +23,17 @@ PDFs in a `pdfs/` folder next to the `.bib` — see RP `cli/pdf_dir_infer.py`.
 
 ## Pipeline
 
-Default **`min_hits`** is **8** (unique DOIs / citation signals before short-circuiting to the next stage). Override in Python (`extract(..., min_hits=…)`) or CLI (`bib-ocr --min-hits …`). Research Party forwards **`RESEARCH_PARTY_BIB_OCR_MIN_HITS`**.
+Default **`min_hits`** is **8** (**distinct DOI strings** pooled from **doi_scan + link_crawl** before OCR stages stop the cascade early; stages 3+ use citation-like counts). Override in Python (`extract(..., min_hits=…)`) or CLI (`bib-ocr --min-hits …`). Research Party forwards **`RESEARCH_PARTY_BIB_OCR_MIN_HITS`**.
+
+**Stages 1 and 2** both run whenever ``max_stage`` ≥ ``2``. Overlap dedupes: ``link_crawl`` omits dois already seen from plaintext regex.
 
 | Stage | Method | When it runs |
 |-------|--------|-------------|
-| 1. `link_crawl` | PDF hyperlink annotations → DOIs (pymupdf) | Always first |
-| 2. `doi_scan` | Regex scan raw text for unlinked `10.XXXX/` patterns | Stage 1 < min_hits |
-| 3. `ref_section` | Detect bibliography section header; OCR with Tesseract if pypdf yields sparse text | Stage 2 < min_hits |
-| 4. `footnote_scan` | OCR bottom 28% band of each page | Stage 3 < min_hits |
-| 5. `inline_crawl` | Parenthetical, narrative, numeric-bracket inline citations | Stage 4 < min_hits (last resort) |
+| 1. `doi_scan` | Regex scan raw pypdf text for `10.XXXX/` patterns | When ``max_stage`` ≥ ``1`` (always unless capped) |
+| 2. `link_crawl` | PDF hyperlink annotations → DOIs (pymupdf); skips dois already hit in stage 1 | When ``max_stage`` ≥ ``2`` (always together with stage 1) |
+| 3. `ref_section` | Detect bibliography section header; OCR with Tesseract if pypdf yields sparse text | When combined distinct DOIs from **1–2** < ``min_hits`` |
+| 4. `footnote_scan` | OCR bottom 28% band of each page | Stage 3 thresholds < ``min_hits`` |
+| 5. `inline_crawl` | Parenthetical, narrative, numeric-bracket inline citations | Stage 4 < ``min_hits`` (last resort) |
 
 Stage 5 is a last resort. Papers almost always have a reference list — if
 stages 1–4 all fail the PDF is likely image-only and needs better scan quality.
@@ -66,7 +68,7 @@ for c in result["citations"]:
 
 ```bash
 bib-ocr paper.pdf --verbose
-bib-ocr paper.pdf --max-stage 2   # hyperlinks + DOI scan only
+bib-ocr paper.pdf --max-stage 2   # plaintext DOIs + hyperlinks only
 ```
 
 ## Sources

@@ -1,12 +1,12 @@
 """
-Stage 2 — Unlinked DOI text scan.
+Stage 1 — Plaintext DOI text scan.
 
-Reads raw text via pypdf and scans every page for DOI patterns that were
-not captured as hyperlink annotations in Stage 1. Typical for PDFs where
-DOIs appear in plaintext reference lists.
+Reads raw text via pypdf and scans every page for DOI patterns in the extracted
+character stream (no hyperlink layer). Runs **before** :mod:`link_crawl`,
+which picks up doi.org links and other URI annotations that plaintext may miss.
 
 No OCR is used; if pypdf yields empty pages those are skipped (Stage 3
-handles them via Tesseract).
+``ref_section`` handles them via Tesseract).
 
 Sources: original implementation.
 """
@@ -26,9 +26,12 @@ def _clean_doi(raw: str) -> str:
 def extract(pdf_path: Path, known_dois: set[str] | None = None) -> list[dict]:
     """
     Return list of {"doi": str, "page": int, "context": str, "stage": "doi_scan"}
-    for every unlinked DOI found in the raw text of the PDF.
+    for every ``10.`` + registry DOI substring found via pypdf text extraction.
 
-    known_dois: DOIs already found in Stage 1 — these are skipped.
+    Args:
+      known_dois: Optional set of DOI strings already counted elsewhere —
+        plaintext hits matching these values are omitted (normally empty when
+        this stage runs first; still used when tests call ``extract`` with a hint).
     """
     try:
         from pypdf import PdfReader

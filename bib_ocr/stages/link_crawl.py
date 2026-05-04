@@ -1,9 +1,11 @@
 """
-Stage 1 — Hyperlink crawl.
+Stage 2 — Hyperlink crawl.
 
 Extracts DOIs and canonical URLs from PDF link annotations using pymupdf.
-This is the fastest and highest-confidence stage: no OCR, no heuristics —
-just metadata the PDF already carries.
+This is faster than OCR stages and higher-confidence — just metadata the
+PDF already carries. Runs **after** :mod:`doi_scan`, which harvests plaintext
+DOIs from the extracted text layer; hyperlinks whose DOIs are already known
+can be omitted from the citation list via ``known_dois``.
 
 Sources: original implementation (no upstream analogue).
 """
@@ -28,10 +30,11 @@ def _normalise_doi(raw: str) -> str:
     return m.group(1) if m else raw
 
 
-def extract(pdf_path: Path) -> list[dict]:
+def extract(pdf_path: Path, known_dois: set[str] | None = None) -> list[dict]:
     """
     Return list of {"doi": str, "url": str, "page": int, "stage": "link_crawl"}
-    for every hyperlink annotation in the PDF.
+    for every hyperlink annotation whose DOI is not already in ``known_dois``
+    (typically DOIs harvested by :mod:`doi_scan` in Stage 1).
 
     Requires pymupdf. Returns [] gracefully if not installed or PDF has no links.
     """
@@ -41,6 +44,7 @@ def extract(pdf_path: Path) -> list[dict]:
         return []
 
     results: list[dict] = []
+    skip = known_dois or set()
     seen_dois: set[str] = set()
 
     try:
@@ -63,7 +67,7 @@ def extract(pdf_path: Path) -> list[dict]:
                 mb = _DOI_RE.search(uri)
                 if mb:
                     doi = _normalise_doi(mb.group(1))
-            if doi and doi not in seen_dois:
+            if doi and doi not in skip and doi not in seen_dois:
                 seen_dois.add(doi)
                 results.append({"doi": doi, "url": uri, "page": page_num, "stage": "link_crawl"})
 

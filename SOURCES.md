@@ -56,8 +56,8 @@ All upstream code is MIT/unspecified-open licensed unless noted.
 
 | Package | Role |
 |---------|------|
-| `pymupdf` (fitz) | PDF parsing, hyperlink annotation extraction (Stage 1) |
-| `pypdf` | Fallback text extraction (Stage 2–4) |
+| `pymupdf` (fitz) | PDF parsing, hyperlink annotation extraction (Stage 2) |
+| `pypdf` | Fallback text extraction (Stages 1, 3–4) |
 | `pytesseract` | OCR engine wrapper (Stages 3–4) |
 | `pdf2image` | PDF page → PIL image for Tesseract (Stage 3–4) |
 | `Pillow` | Image preprocessing (invert, contrast, rotate) |
