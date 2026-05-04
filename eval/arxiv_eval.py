@@ -51,8 +51,13 @@ if str(_REPO) not in sys.path:
 # Config
 # ---------------------------------------------------------------------------
 
-S2_REFS_URL = "https://api.semanticscholar.org/graph/v1/paper/{paper_id}/references"
-ARXIV_PDF   = "https://arxiv.org/pdf/{arxiv_id}"
+S2_REFS_URL  = "https://api.semanticscholar.org/graph/v1/paper/{paper_id}/references"
+OA_WORKS_URL = "https://api.openalex.org/works"
+ARXIV_PDF    = "https://arxiv.org/pdf/{arxiv_id}"
+
+# mailto param improves OA rate limits (polite pool: 10 req/s vs 100 req/min)
+_OA_MAILTO: str = "tvv125@gmail.com"
+_OA_BATCH  = 50   # max openalex_id filters per /works request
 
 _SESSION = _requests.Session()
 _SESSION.headers["User-Agent"] = "bib-ocr-eval/0.1 (research; mailto:tvv125@gmail.com)"
@@ -141,6 +146,69 @@ def _s2_dois(paper_id: str) -> set[str]:
 
 
 # ---------------------------------------------------------------------------
+# Ground truth via OpenAlex (good coverage of recent papers)
+# ---------------------------------------------------------------------------
+
+def _oa_params() -> dict:
+    return {"mailto": _OA_MAILTO} if _OA_MAILTO else {}
+
+
+def _oa_dois_for_arxiv(arxiv_id: str) -> set[str]:
+    """Return reference DOIs for an arXiv paper via OpenAlex referenced_works."""
+    bare = re.sub(r"v\d+$", "", arxiv_id, flags=re.IGNORECASE)
+    doi  = f"10.48550/arXiv.{bare}"
+    return _oa_dois_for_doi(doi)
+
+
+def _oa_dois_for_doi(doi: str) -> set[str]:
+    """Return reference DOIs for any paper by DOI via OpenAlex referenced_works."""
+    doi = doi.strip().lower().lstrip("https://doi.org/")
+    if not doi:
+        return set()
+    try:
+        r = _SESSION.get(
+            OA_WORKS_URL,
+            params={**_oa_params(), "filter": f"doi:{doi}",
+                    "select": "referenced_works"},
+            timeout=15,
+        )
+        if not r.ok:
+            return set()
+        results = r.json().get("results") or []
+        if not results:
+            return set()
+        w_ids: list[str] = results[0].get("referenced_works") or []
+    except Exception:
+        return set()
+
+    if not w_ids:
+        return set()
+
+    # Batch-resolve W-IDs → DOIs
+    dois: set[str] = set()
+    for i in range(0, len(w_ids), _OA_BATCH):
+        batch = w_ids[i : i + _OA_BATCH]
+        id_param = "|".join(w.split("/")[-1] for w in batch)
+        try:
+            rb = _SESSION.get(
+                OA_WORKS_URL,
+                params={**_oa_params(), "filter": f"openalex_id:{id_param}",
+                        "select": "doi", "per_page": _OA_BATCH},
+                timeout=15,
+            )
+            if not rb.ok:
+                continue
+            for item in rb.json().get("results") or []:
+                d = (item.get("doi") or "").strip().lower()
+                d = re.sub(r"^https?://doi\.org/", "", d)
+                if d:
+                    dois.add(d)
+        except Exception:
+            continue
+    return dois
+
+
+# ---------------------------------------------------------------------------
 # PDF download (arXiv)
 # ---------------------------------------------------------------------------
 
@@ -167,30 +235,38 @@ def _download_arxiv_pdf(arxiv_id: str, dest: Path) -> Path | None:
 
 def _local_ground_truth(pdf_path: Path) -> set[str]:
     """
-    Try sidecar JSON first, then fall back to scanning the PDF itself for DOIs
-    and fetching their references from S2.
+    Try sidecar JSON first, then fall back to scanning the PDF itself for a DOI
+    and fetching their references from S2 + OpenAlex (union).
+
+    OA is the primary source for published papers (journals/conferences) since
+    it has near-complete reference lists for those.  S2 fills gaps for preprints.
     """
     sidecar = pdf_path.with_suffix(".json")
     if sidecar.exists():
         try:
             data = json.loads(sidecar.read_text())
-            refs = data.get("references") or []
+            # Sidecar may carry the paper's own DOI so we can also hit OA
+            own_doi = (data.get("doi") or "").strip().lower()
+            refs = set(data.get("references") or [])
+            if own_doi:
+                refs |= _oa_dois_for_doi(own_doi)
+                refs |= _s2_dois_for_doi(own_doi)
             return {r.strip().lower() for r in refs if r.strip()}
         except Exception:
             pass
 
-    # No sidecar — extract the paper's own DOI from the PDF and query S2
+    # No sidecar — extract the paper's own DOI from the PDF and query both APIs
     try:
         import fitz
         doc = fitz.open(str(pdf_path))
-        import re
         doi_re = re.compile(r"\b(10\.\d{4,9}/[^\s\"'<>,;)]+)")
         for page in doc:
             for link in page.get_links():
                 uri = link.get("uri") or ""
                 m = doi_re.search(uri)
                 if m:
-                    return _s2_dois_for_doi(m.group(1).rstrip(".,;)"))
+                    doi = m.group(1).rstrip(".,;)")
+                    return _oa_dois_for_doi(doi) | _s2_dois_for_doi(doi)
         doc.close()
     except Exception:
         pass
@@ -300,6 +376,7 @@ def _aggregate(results: list[dict]) -> dict:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    global _OA_MAILTO
     ap = argparse.ArgumentParser(description="Evaluate bib-ocr against arXiv + local PDFs")
     ap.add_argument("--n",          type=int,   default=50,
                     help="Number of arXiv papers (0 = local only)")
@@ -314,7 +391,15 @@ def main() -> None:
                     help="arXiv subject categories")
     ap.add_argument("--year",       type=int,   default=2023,
                     help="Sample papers from this year so S2 has indexed their refs (default: 2023)")
+    ap.add_argument("--gt-source",  default="both",
+                    choices=["s2", "oa", "both"],
+                    help="Ground-truth source: s2 (Semantic Scholar), oa (OpenAlex), "
+                         "or both (union — best coverage, default)")
+    ap.add_argument("--oa-mailto",  default=_OA_MAILTO,
+                    help="Email for OpenAlex polite pool (faster rate limits)")
     args = ap.parse_args()
+
+    _OA_MAILTO = args.oa_mailto
 
     pdf_dir = Path(args.pdf_dir)
     pdf_dir.mkdir(exist_ok=True)
@@ -332,23 +417,34 @@ def main() -> None:
         print(f"Sampling {args.n} arXiv papers from: {', '.join(args.categories)} (year={args.year})")
         ids = _arxiv_ids(args.n, args.categories, year=args.year)
         print(f"  Got {len(ids)} IDs")
-        print(f"  Downloading PDFs + fetching S2 ground truth …")
+        gt_note = {"s2": "S2", "oa": "OA (note: OA refs sparse for bare arXiv preprints)", "both": "S2+OA"}[args.gt_source]
+        print(f"  Downloading PDFs + fetching ground truth ({gt_note}) …")
         for i, aid in enumerate(ids, 1):
             pdf_path = _download_arxiv_pdf(aid, pdf_dir)
             if pdf_path is None:
                 print(f"    [{i}/{len(ids)}] {aid} — download failed, skipping")
                 continue
-            gt = list(_s2_dois_for_arxiv(aid))
-            print(f"    [{i}/{len(ids)}] {aid} — {len(gt)} S2 refs")
-            tasks.append(("arxiv", aid, str(pdf_path), gt))
+            gt: set[str] = set()
+            counts: list[str] = []
+            if args.gt_source in ("s2", "both"):
+                s2 = _s2_dois_for_arxiv(aid)
+                gt |= s2
+                counts.append(f"s2={len(s2)}")
+            if args.gt_source in ("oa", "both"):
+                oa = _oa_dois_for_arxiv(aid)
+                gt |= oa
+                counts.append(f"oa={len(oa)}")
+            print(f"    [{i}/{len(ids)}] {aid} — {' '.join(counts)}  union={len(gt)}")
+            tasks.append(("arxiv", aid, str(pdf_path), list(gt)))
 
     # Local PDFs (JSTOR, Zotero, etc.)
     if args.local_dir:
         local_pdfs = sorted(Path(args.local_dir).glob("**/*.pdf"))
         print(f"Found {len(local_pdfs)} local PDFs in {args.local_dir}")
         for p in local_pdfs:
-            gt = list(_local_ground_truth(p))
-            tasks.append(("local", str(p), str(p), gt))
+            # _local_ground_truth already uses sidecar → S2; augment with OA when doi known
+            gt: set[str] = set(_local_ground_truth(p))
+            tasks.append(("local", str(p), str(p), list(gt)))
 
     if not tasks:
         print("No papers to evaluate. Use --n or --local-dir.")
