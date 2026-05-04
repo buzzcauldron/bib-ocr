@@ -93,7 +93,7 @@ def _run_bib_ocr(pdf: Path, verbose: bool = False) -> dict:
     except ImportError:
         return {"error": "bib-ocr not installed", "citations": [], "stages_run": []}
     try:
-        return extract(str(pdf), min_hits=3, verbose=verbose)
+        return extract(str(pdf), verbose=verbose)
     except Exception as exc:
         return {"error": str(exc), "citations": [], "stages_run": []}
 

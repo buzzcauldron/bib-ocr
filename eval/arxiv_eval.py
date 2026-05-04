@@ -299,7 +299,7 @@ def _eval_one(args: tuple[str, str, str, list[str]]) -> dict:
         return {"kind": kind, "id": identifier, "error": "pdf_not_found"}
 
     try:
-        result = _extract(str(pdf_path), min_hits=3, verbose=False)
+        result = _extract(str(pdf_path), verbose=False)
     except Exception as exc:
         return {"kind": kind, "id": identifier, "error": str(exc)}
 

@@ -6,6 +6,11 @@ only fast pymupdf text extraction (no OCR). The map lets the pipeline target
 Tesseract on the specific pages/regions where references actually are, rather
 than blindly scanning a fixed tail window.
 
+Section titles that trigger a modest per-page heat boost (“References”,
+“Bibliography”, “Works cited”, chapter-prefixed lines, multilingual variants,
+TOC rows with trailing page numbers, …) are defined alongside the
+reference-section line detector in ``bib_ocr.section_heads``.
+
 Usage
 -----
     from bib_ocr.density import page_density, target_pages, render_heatmap
@@ -35,10 +40,7 @@ _CITATION_RE = re.compile(
     re.UNICODE,
 )
 
-_SECTION_HEADER_RE = re.compile(
-    r"\b(references|bibliography|works\s+cited|endnotes|notes)\b",
-    re.IGNORECASE,
-)
+from bib_ocr.section_heads import SECTION_HEADER_DENSITY_RE
 
 
 def page_density(
@@ -74,7 +76,7 @@ def page_density(
 
         # bonus score for pages that contain a section header
         page_text = page.get_text()
-        if _SECTION_HEADER_RE.search(page_text):
+        if SECTION_HEADER_DENSITY_RE.search(page_text):
             arr[i, :] += 3.0
 
     doc.close()

@@ -13,8 +13,6 @@ from .pipeline import extract
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description="Extract bibliography citations from a PDF.")
     p.add_argument("pdf", help="Path to input PDF")
-    p.add_argument("--min-hits", type=int, default=8,
-                   help="Min DOI/citation hits before skipping remaining stages (default: 8)")
     p.add_argument(
         "--max-stage",
         type=int,
@@ -41,7 +39,7 @@ def main(argv: list[str] | None = None) -> None:
         if args.output == "-" and not sys.stdin.isatty():
             return  # density-only mode if no explicit --output
 
-    result = extract(args.pdf, min_hits=args.min_hits, max_stage=args.max_stage, verbose=args.verbose)
+    result = extract(args.pdf, max_stage=args.max_stage, verbose=args.verbose)
 
     out = json.dumps(result, indent=2, ensure_ascii=False)
     if args.output == "-":

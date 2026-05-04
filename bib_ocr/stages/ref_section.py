@@ -6,7 +6,8 @@ paper and extracts raw reference strings from it.
 
 Strategy (in order):
   1. Scan the last N pages with pypdf text extraction.
-  2. Look for a section header (References / Bibliography / Works Cited / Notes…).
+  2. Look for a bibliography section header (``Bibliography``, ``References``,
+     ``Works cited``, chapter prefixes, multilingual variants — see ``section_heads``).
   3. For pages that yield < MIN_CHARS of text, fall back to Tesseract OCR using
      the preprocessing pipeline from bib_ocr.preprocessing (biblio.py-derived).
   4. Split the raw block into individual reference strings.
@@ -23,13 +24,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-# Section header keywords (case-insensitive)
-_SECTION_HEADERS = re.compile(
-    r"^\s*(references|bibliography|works\s+cited|works\s+consulted|"
-    r"bibliographie|literatur|literatuur|notes|endnotes|footnotes|"
-    r"reference\s+list|cited\s+works)\s*$",
-    re.IGNORECASE | re.MULTILINE,
-)
+from bib_ocr.section_heads import SECTION_HEADER_LINE_RE as _SECTION_HEADERS
 
 # Stop bibliography extraction when proofs / appendix content begins (SSRNecon pattern).
 _TAIL_STOP_LINES = re.compile(

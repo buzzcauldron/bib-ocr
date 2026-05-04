@@ -1,9 +1,13 @@
 """
 Main pipeline orchestrator.
 
-Runs stages in order, short-circuiting once enough citations are found.
-Stages **1 (`doi_scan`)** and **2 (`link_crawl`)** always run when ``max_stage`` ≥ **2**
-(then counts are merged for the ``min_hits`` gate before OCR stages).
+Runs citation stages **1→5** in order whenever ``max_stage`` allows — there is **no**
+``min_hits`` short-circuit. Scanned PDFs are assumed to need the full cascade (plaintext
+layer, links, density-guided bibliography tail, footnote bands, inline patterns) unless
+the operator caps stages with ``max_stage``.
+
+Stages **1 (`doi_scan`)** and **2 (`link_crawl`)** both run whenever ``max_stage`` ≥ **2**.
+OCR-bearing stages (**3–5**) always follow if still permitted by ``max_stage``.
 
 Each stage is independent and returns a flat list of dicts with a "stage" key.
 """
@@ -14,15 +18,10 @@ from pathlib import Path
 
 from .stages import doi_scan, link_crawl, ref_section, footnote_scan, inline_crawl
 
-# A stage is considered "sufficient" if it returns at least this many hits.
-# Downstream callers can override per-call.
-DEFAULT_MIN_HITS = 8
-
 
 def extract(
     pdf_path: str | Path,
     *,
-    min_hits: int = DEFAULT_MIN_HITS,
     max_stage: int = 5,
     verbose: bool = False,
 ) -> dict:
@@ -34,8 +33,7 @@ def extract(
     1. ``doi_scan`` — plaintext ``10.*/*`` DOI-shaped substrings via pypdf on every page.
 
     2. ``link_crawl`` — hyperlink annotations → DOIs/URLs via pymupdf (skips DOIs
-       already harvested in stage 1). **Always invoked when ``max_stage`` ≥ 2**, then
-       the combined unique-DOI count is checked against ``min_hits`` before stage 3+.
+       already harvested in stage 1). **Runs when ``max_stage`` ≥ 2.**
 
     3. ``ref_section`` — detect + OCR bibliography tail (density-guided).
 
@@ -46,9 +44,6 @@ def extract(
     Parameters
     ----------
     pdf_path:  Path to the input PDF.
-    min_hits:  Minimum distinct DOI strings required after **doi_scan + link_crawl**
-       (combined) — and thresholds for citation-like hits in later stages — before
-       skipping what follows.
     max_stage: Stop after this stage number (1–5). Useful for testing.
     verbose:   Print stage results to stdout.
 
@@ -99,27 +94,17 @@ def extract(
     doi_hits = {c["doi"] for c in s1 if c.get("doi")}
 
     # Stage 2 — hyperlink annotations → DOIs/URLs (pymupdf; skips dois already in plain text).
-    # Always runs when max_stage≥2 so both layers are mined before OCR stages.
     s2 = _run(2, "link_crawl", link_crawl.extract, known_dois=doi_hits)
     all_citations.extend(s2)
-    doi_hits |= {c["doi"] for c in s2 if c.get("doi")}
-    if len(doi_hits) >= min_hits:
-        return _result(all_citations, stages_run, pdf_path)
 
     # Stage 3 — reference section OCR (density-targeted tail_start)
     _ensure_density()
     s3 = _run(3, "ref_section", ref_section.extract, tail_start=_ref_start, density=_density_map)
     all_citations.extend(s3)
-    ref_hits = len([c for c in s3 if c.get("doi") or c.get("text")])
-    if ref_hits >= min_hits:
-        return _result(all_citations, stages_run, pdf_path)
 
     # Stage 4 — footnote zone scan (density-targeted pages)
     s4 = _run(4, "footnote_scan", footnote_scan.extract, target_page_indices=_hot_pages)
     all_citations.extend(s4)
-    fn_hits = len([c for c in s4 if c.get("doi") or c.get("author")])
-    if fn_hits >= min_hits:
-        return _result(all_citations, stages_run, pdf_path)
 
     # Stage 5 — inline citation crawl (last resort)
     s5 = _run(5, "inline_crawl", inline_crawl.extract)

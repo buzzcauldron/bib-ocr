@@ -1,7 +1,7 @@
 # bib-ocr
 
-Bibliography-oriented PDF citation extractor. Runs a five-stage cascade, stopping
-as soon as enough citations are found. **Integrated into**
+Bibliography-oriented PDF citation extractor. Runs a five-stage citation cascade whenever
+each stage's ``max_stage`` allows (defaults to all five — no ``min_hits`` early exit). **Integrated into**
 [Research Party](https://github.com/buzzcauldron/research-party) as compile **Step 2.0 / 2.1**
 (`pack_compiler` + `cli/bib_ocr_adapter.py`) when this package is installed and a `--pdf-dir`
 (or auto-resolved PDF folder) contains PDFs.
@@ -23,20 +23,22 @@ PDFs in a `pdfs/` folder next to the `.bib` — see RP `cli/pdf_dir_infer.py`.
 
 ## Pipeline
 
-Default **`min_hits`** is **8** (**distinct DOI strings** pooled from **doi_scan + link_crawl** before OCR stages stop the cascade early; stages 3+ use citation-like counts). Override in Python (`extract(..., min_hits=…)`) or CLI (`bib-ocr --min-hits …`). Research Party forwards **`RESEARCH_PARTY_BIB_OCR_MIN_HITS`**.
+There is **no** ``min_hits`` early exit: after stages **1–2**, **ref_section**, **footnote_scan**, and
+**inline_crawl** run whenever ``max_stage`` permits (default **5** — full cascade). Cap work with Python
+(`extract(..., max_stage=n)`) or CLI (`bib-ocr --max-stage n`). Research Party forwards
+**``RESEARCH_PARTY_BIB_OCR_MAX_STAGE``**.
 
-**Stages 1 and 2** both run whenever ``max_stage`` ≥ ``2``. Overlap dedupes: ``link_crawl`` omits dois already seen from plaintext regex.
+**Stages 1 and 2** both run whenever ``max_stage`` ≥ ``2``. Overlap dedupes: ``link_crawl`` omits DOIs already seen from plaintext regex.
 
 | Stage | Method | When it runs |
 |-------|--------|-------------|
-| 1. `doi_scan` | Regex scan raw pypdf text for `10.XXXX/` patterns | When ``max_stage`` ≥ ``1`` (always unless capped) |
-| 2. `link_crawl` | PDF hyperlink annotations → DOIs (pymupdf); skips dois already hit in stage 1 | When ``max_stage`` ≥ ``2`` (always together with stage 1) |
-| 3. `ref_section` | Detect bibliography section header; OCR with Tesseract if pypdf yields sparse text | When combined distinct DOIs from **1–2** < ``min_hits`` |
-| 4. `footnote_scan` | OCR bottom 28% band of each page | Stage 3 thresholds < ``min_hits`` |
-| 5. `inline_crawl` | Parenthetical, narrative, numeric-bracket inline citations | Stage 4 < ``min_hits`` (last resort) |
+| 1. `doi_scan` | Regex scan raw pypdf text for `10.XXXX/` patterns | When ``max_stage`` ≥ ``1`` (unless capped) |
+| 2. `link_crawl` | PDF hyperlink annotations → DOIs (pymupdf); skips dois already hit in stage 1 | When ``max_stage`` ≥ ``2`` (together with stage 1) |
+| 3. `ref_section` | Detect bibliography header; OCR with Tesseract where pypdf is sparse | When ``max_stage`` ≥ ``3`` |
+| 4. `footnote_scan` | OCR bottom band on density-targeted pages | When ``max_stage`` ≥ ``4`` |
+| 5. `inline_crawl` | Parenthetical, narrative, numeric-bracket inline citations | When ``max_stage`` ≥ ``5`` |
 
-Stage 5 is a last resort. Papers almost always have a reference list — if
-stages 1–4 all fail the PDF is likely image-only and needs better scan quality.
+Stages **3–4** anchor on citation-density heuristics **target_pages** / **ref_section_start** — useful for locating reference blocks and footnote lanes on heterogeneous PDFs. Recognized bibliography headings (including **Bibliography**, **References**, **Works cited**, multilingual variants, ``Chapter N …`` / TOC page numbers, and hierarchical outline numbers such as ``3.2 …``) live in **`bib_ocr/section_heads.py`** — shared between the density heat-map boost and **`ref_section`** header stripping.
 
 ## Tests
 

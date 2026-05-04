@@ -2,13 +2,11 @@
 Stage 5 — Inline citation crawl (last resort).
 
 Scans every page for inline citation patterns: parenthetical author-year,
-narrative author-year, numeric brackets. This stage runs only when all
-earlier stages yield fewer than min_hits citations.
+narrative author-year, numeric brackets. Runs after **footnote_scan** when
+``max_stage`` permits.
 
-Users are extremely unlikely to upload a paper without citations, so
-reaching this stage usually means the PDF is image-only and Stages 3–4
-did not OCR it successfully, OR the paper uses a citation style with no
-reference list (e.g., pure footnote-only Chicago).
+Useful overlap with earlier stages catches inline-only patterns; Stage 5
+also remains the place for citation styles weak on bibliography blocks.
 
 Sources:
   - inline_citation_extractor.py (research-party): pattern definitions,
