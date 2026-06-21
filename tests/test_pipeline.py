@@ -109,6 +109,43 @@ def test_ref_section_end_exclusive_when_probe_pages_are_density_blind() -> None:
     assert ref_section_end_exclusive(dm, 40) == 50
 
 
+def test_footnote_scan_falls_back_to_all_pages_when_density_has_no_hot_pages(
+    monkeypatch, tiny_pdf
+) -> None:
+    """Empty hot-page list must not suppress footnote_scan — treat as scan-all."""
+    import bib_ocr.stages.doi_scan as doi_scan
+    import bib_ocr.stages.link_crawl as link_crawl
+    import bib_ocr.stages.ref_section as ref_section
+    import bib_ocr.stages.footnote_scan as footnote_scan
+    import bib_ocr.stages.inline_crawl as inline_crawl
+    import bib_ocr.density as density
+
+    monkeypatch.setattr(doi_scan, "extract", lambda *a, **k: [])
+    monkeypatch.setattr(link_crawl, "extract", lambda *a, **k: [])
+    monkeypatch.setattr(ref_section, "extract", lambda *a, **k: [])
+    monkeypatch.setattr(inline_crawl, "extract", lambda *a, **k: [])
+
+    captured: dict[str, object] = {}
+
+    def footnote_extract(_pdf_path, target_page_indices=None):
+        captured["target_page_indices"] = target_page_indices
+        return []
+
+    monkeypatch.setattr(footnote_scan, "extract", footnote_extract)
+    monkeypatch.setattr(
+        density,
+        "page_density",
+        lambda _path: np.zeros((3, 10), dtype=np.float32),
+    )
+    monkeypatch.setattr(density, "target_pages", lambda _dm: [])
+    monkeypatch.setattr(density, "ref_section_start", lambda _dm: 0)
+
+    from bib_ocr.pipeline import extract
+
+    extract(tiny_pdf, max_stage=4, verbose=False)
+    assert captured.get("target_page_indices") is None
+
+
 def test_result_shape(monkeypatch, tiny_pdf):
     import bib_ocr.stages.doi_scan as doi_scan
 
