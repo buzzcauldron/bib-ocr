@@ -1,0 +1,14 @@
+{
+  "n_papers": 20,
+  "n_errors": 0,
+  "avg_precision": 0.3709,
+  "avg_recall": 0.1977,
+  "avg_f1": 0.2143,
+  "stage_hit_counts": {
+    "link_crawl": 67,
+    "doi_scan": 42,
+    "ref_section": 535
+  },
+  "arxiv_avg_f1": 0.2143,
+  "arxiv_n": 20
+}
