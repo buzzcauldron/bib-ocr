@@ -120,7 +120,6 @@ def test_footnote_scan_falls_back_to_all_pages_when_density_hot_list_empty(monke
     monkeypatch.setattr(doi_scan, "extract", lambda pdf_path, **k: [])
     monkeypatch.setattr(link_crawl, "extract", lambda pdf_path, **kw: [])
     monkeypatch.setattr(ref_section, "extract", lambda pdf_path, **kw: [])
-
     monkeypatch.setattr(
         density,
         "page_density",
@@ -140,7 +139,8 @@ def test_footnote_scan_falls_back_to_all_pages_when_density_hot_list_empty(monke
 
     from bib_ocr.pipeline import extract
 
-    extract(tiny_pdf, max_stage=4, verbose=False)
+    out = extract(tiny_pdf, max_stage=4, verbose=False)
+    assert "footnote_scan" in out["stages_run"]
     assert seen == [None]
 
 
