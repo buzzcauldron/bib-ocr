@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from bib_ocr.stages.ref_section import _split_ref_entries
+from bib_ocr.stages.ref_section import _split_pdf_prose_bundle, _split_ref_entries
 
 
 def test_ssrn_concatenated_preprint_splits_before_next_surname_year() -> None:
@@ -13,6 +13,19 @@ def test_ssrn_concatenated_preprint_splits_before_next_surname_year() -> None:
     entries = _split_ref_entries(block)
     texts = "\n".join(entries)
     assert "Ben-Porath, Yoram" in texts
+
+
+def test_dissertation_prose_bundle_splits_given_name_first_entries() -> None:
+    """Thesis lists use Given-name-first authors; prose bundle must not rely on surname-comma glue."""
+    entry = (
+        "Kimon Antonakopoulos. Optimization methods for machine learning. "
+        "PhD thesis, Stanford University, 2022."
+    )
+    block = ("\n".join([entry] * 40)) + "\n"  # >= 4000 chars, >= 35 entries
+    slices = _split_pdf_prose_bundle(block, min_entries=35)
+    assert slices is not None
+    assert len(slices) >= 35
+    assert all("Kimon Antonakopoulos" in s for s in slices[:3])
 
 
 def test_diacritic_surname_splits_across_wrapped_journal_line() -> None:
