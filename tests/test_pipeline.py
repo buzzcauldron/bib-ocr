@@ -109,7 +109,7 @@ def test_ref_section_end_exclusive_when_probe_pages_are_density_blind() -> None:
     assert ref_section_end_exclusive(dm, 40) == 50
 
 
-def test_footnote_scan_falls_back_to_all_pages_when_density_hot_list_empty(monkeypatch, tiny_pdf):
+def test_footnote_scan_falls_back_to_all_pages_when_hot_pages_empty(monkeypatch, tiny_pdf):
     """Empty target_pages must not skip footnote_scan — treat as scan-all (None)."""
     import bib_ocr.stages.doi_scan as doi_scan
     import bib_ocr.stages.link_crawl as link_crawl
