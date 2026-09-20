@@ -103,7 +103,7 @@ def extract(
     all_citations.extend(s3)
 
     # Stage 4 — footnote zone scan (density-targeted pages)
-    s4 = _run(4, "footnote_scan", footnote_scan.extract, target_page_indices=_hot_pages)
+    s4 = _run(4, "footnote_scan", footnote_scan.extract, target_page_indices=_hot_pages or None)
     all_citations.extend(s4)
 
     # Stage 5 — inline citation crawl (last resort)
