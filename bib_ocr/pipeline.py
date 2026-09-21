@@ -102,8 +102,18 @@ def extract(
     s3 = _run(3, "ref_section", ref_section.extract, tail_start=_ref_start, density=_density_map)
     all_citations.extend(s3)
 
+<<<<<<< HEAD
     # Stage 4 — footnote zone scan (density-targeted pages)
-    s4 = _run(4, "footnote_scan", footnote_scan.extract, target_page_indices=_hot_pages)
+    s4 = _run(4, "footnote_scan", footnote_scan.extract, target_page_indices=_hot_pages or None)
+=======
+    # Stage 4 — footnote zone scan (density-targeted pages; scan all pages when none are hot)
+    s4 = _run(
+        4,
+        "footnote_scan",
+        footnote_scan.extract,
+        target_page_indices=_hot_pages or None,
+    )
+>>>>>>> d40fec2 (Restore bib-ocr health guards after eval-results drift)
     all_citations.extend(s4)
 
     # Stage 5 — inline citation crawl (last resort)
