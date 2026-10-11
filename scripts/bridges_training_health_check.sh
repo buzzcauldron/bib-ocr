@@ -48,14 +48,18 @@ _resolve_hist() {
 }
 
 HIST=""
+hist_ephemeral=0
 if HIST="$(_resolve_hist)"; then
   note "historical-ocr root: $HIST"
 else
   note "historical-ocr not found locally — fresh shallow clone for script/symlink checks"
   HIST="$(mktemp -d "${TMPDIR:-/tmp}/historical-ocr-bridges-check.XXXXXX")"
+  hist_ephemeral=1
   trap 'rm -rf "$HIST"' EXIT
   git clone --depth 1 https://github.com/buzzcauldron/historical-ocr.git "$HIST"
 fi
+
+PATCH="$REPO/contrib/historical-ocr-blacknews-latest.patch"
 
 for f in "$HIST"/scripts/bridges_* "$HIST"/scripts/submit_bridges_*; do
   [[ -f "$f" ]] || continue
@@ -70,8 +74,14 @@ BN="$HIST/data/benchmarks/blacknews_latest"
 if [[ -L "$BN" ]]; then
   target="$(readlink "$BN")"
   if [[ "$target" == /* ]]; then
-    fail "blacknews_latest is absolute ($target) — breaks Linux/Bridges clones"
-    note "HINT: bash scripts/remediate_historical_ocr_benchmark_symlink.sh"
+    if [[ "$hist_ephemeral" -eq 1 && -f "$PATCH" ]] \
+      && (cd "$HIST" && git apply --check "$PATCH" 2>/dev/null); then
+      note "WARN: upstream blacknews_latest still absolute — apply contrib patch on historical-ocr main"
+      ok "contrib patch applies cleanly to upstream main"
+    else
+      fail "blacknews_latest is absolute ($target) — breaks Linux/Bridges clones"
+      note "HINT: HISTORICAL_OCR_ROOT=/path/to/historical-ocr bash scripts/remediate_historical_ocr_benchmark_symlink.sh"
+    fi
   else
     ok "blacknews_latest → $target"
   fi
