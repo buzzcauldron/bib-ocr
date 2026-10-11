@@ -19,6 +19,10 @@ fail() { note "FAIL: $*"; failures=$((failures + 1)); }
 ok() { note "OK: $*"; }
 
 note "bib-ocr pytest"
+if ! python3 -c "import pytest" 2>/dev/null; then
+  note "installing bib-ocr dev deps (pytest missing)"
+  pip install -e ".[dev]" -q
+fi
 if ! python3 -m pytest -q; then
   fail "bib-ocr pytest"
 else
