@@ -1,0 +1,36 @@
+From 68eabca5d1b8c90e44c0f7cffcefe25e437d6d2a Mon Sep 17 00:00:00 2001
+From: "cursor[bot]" <cursor@users.noreply.github.com>
+Date: Sun, 11 Oct 2026 16:10:20 +0000
+Subject: [PATCH] Fix blacknews_latest benchmark symlink for Linux/Bridges
+ clones
+
+---
+ data/benchmarks/blacknews_latest  | 2 +-
+ scripts/benchmark_dual_targets.sh | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/data/benchmarks/blacknews_latest b/data/benchmarks/blacknews_latest
+index e5af56f..05d516b 120000
+--- a/data/benchmarks/blacknews_latest
++++ b/data/benchmarks/blacknews_latest
+@@ -1 +1 @@
+-/Users/halxiii/Projects/historical ocr/data/benchmarks/blacknews_20260611T134944Z
+\ No newline at end of file
++blacknews_20260611T134944Z
+\ No newline at end of file
+diff --git a/scripts/benchmark_dual_targets.sh b/scripts/benchmark_dual_targets.sh
+index ee9401e..112c988 100755
+--- a/scripts/benchmark_dual_targets.sh
++++ b/scripts/benchmark_dual_targets.sh
+@@ -53,7 +53,7 @@ else
+   JOB="${REPO}/jobs/_bench_blacknews/export"
+   cp "$JOB/BlackNews_19700110_002.txt" "$OUT/" 2>/dev/null || true
+   cp "$JOB/BlackNews_19700110_002.review.json" "$OUT/" 2>/dev/null || true
+-  ln -sfn "$OUT" "${BENCH_DIR}/blacknews_latest"
++  (cd "${BENCH_DIR}" && ln -sfn "blacknews_${STAMP}" blacknews_latest)
+   echo "blacknews snapshot → $OUT"
+   rm -rf "${REPO}/jobs/_bench_blacknews"
+ fi
+-- 
+2.43.0
+
