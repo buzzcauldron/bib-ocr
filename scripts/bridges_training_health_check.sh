@@ -71,15 +71,19 @@ for f in "$HIST"/scripts/bridges_* "$HIST"/scripts/submit_bridges_*; do
 done
 
 BN="$HIST/data/benchmarks/blacknews_latest"
+BDT="$HIST/scripts/benchmark_dual_targets.sh"
+if [[ -f "$BDT" ]] && grep -q 'ln -sfn "\$OUT" "\${BENCH_DIR}/blacknews_latest"' "$BDT" 2>/dev/null; then
+  fail "benchmark_dual_targets.sh still writes an absolute-path blacknews_latest (breaks fresh Linux clones)"
+  note "HINT: merge contrib/historical-ocr-blacknews-latest.patch into historical-ocr, or run scripts/remediate_historical_ocr_benchmark_symlink.sh"
+fi
+
 if [[ -L "$BN" ]]; then
   target="$(readlink "$BN")"
   if [[ "$target" == /* ]]; then
+    fail "blacknews_latest is absolute ($target) — breaks Linux/Bridges clones"
+    note "HINT: merge contrib/historical-ocr-blacknews-latest.patch into historical-ocr main"
     if [[ -f "$PATCH" ]] && (cd "$HIST" && git apply --check "$PATCH" 2>/dev/null); then
-      note "WARN: blacknews_latest still absolute — merge contrib patch on historical-ocr main (or run remediate script locally)"
-      ok "contrib patch applies cleanly to historical-ocr checkout"
-    else
-      fail "blacknews_latest is absolute ($target) — breaks Linux/Bridges clones"
-      note "HINT: HISTORICAL_OCR_ROOT=/path/to/historical-ocr bash scripts/remediate_historical_ocr_benchmark_symlink.sh"
+      note "contrib patch applies cleanly to this checkout (use as merge or apply locally)"
     fi
   else
     ok "blacknews_latest → $target"
