@@ -61,6 +61,13 @@ fi
 
 PATCH="$REPO/contrib/historical-ocr-blacknews-latest.patch"
 
+# Ephemeral clone: apply the portable blacknews_latest fix so this check validates the
+# post-patch tree (upstream main may still carry an absolute symlink until merged).
+if [[ "$hist_ephemeral" -eq 1 ]] && [[ -f "$PATCH" ]] && git -C "$HIST" apply --check "$PATCH" 2>/dev/null; then
+  git -C "$HIST" apply "$PATCH"
+  note "applied contrib patch to ephemeral historical-ocr clone (portable benchmark symlink)"
+fi
+
 for f in "$HIST"/scripts/bridges_* "$HIST"/scripts/submit_bridges_*; do
   [[ -f "$f" ]] || continue
   if bash -n "$f"; then
