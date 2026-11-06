@@ -73,6 +73,16 @@ bib-ocr paper.pdf --verbose
 bib-ocr paper.pdf --max-stage 2   # plaintext DOIs + hyperlinks only
 ```
 
+## Bridges / historical-OCR training
+
+The sibling repo [historical-ocr](https://github.com/buzzcauldron/historical-ocr) holds Slurm scripts and data for PSC Bridges newspaper OCR training. This package includes a small health probe you can run from cron or CI:
+
+```bash
+bash scripts/bridges_training_health_check.sh
+```
+
+It runs `pytest` here and, when it can find or shallow-clone `historical-ocr`, validates `scripts/bridges_*` / `submit_bridges_*` shell syntax and checks that `data/benchmarks/blacknews_latest` is a **relative** symlink (absolute macOS paths break Linux/Bridges checkouts). To repair a bad checkout locally, use `scripts/remediate_historical_ocr_benchmark_symlink.sh` or merge `contrib/historical-ocr-blacknews-latest.patch` upstream.
+
 ## Sources
 
 See [SOURCES.md](SOURCES.md) for full upstream attribution.
