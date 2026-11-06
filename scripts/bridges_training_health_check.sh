@@ -75,8 +75,9 @@ if [[ -L "$BN" ]]; then
   target="$(readlink "$BN")"
   if [[ "$target" == /* ]]; then
     if [[ -f "$PATCH" ]] && (cd "$HIST" && git apply --check "$PATCH" 2>/dev/null); then
-      note "WARN: blacknews_latest still absolute — merge contrib patch on historical-ocr main (or run remediate script locally)"
-      ok "contrib patch applies cleanly to historical-ocr checkout"
+      fail "historical-ocr main still ships absolute blacknews_latest ($target) — merge contrib patch there or remediate locally"
+      note "HINT: merge $PATCH into https://github.com/buzzcauldron/historical-ocr main, or run:"
+      note "  HISTORICAL_OCR_ROOT=/path/to/historical-ocr bash scripts/remediate_historical_ocr_benchmark_symlink.sh"
     else
       fail "blacknews_latest is absolute ($target) — breaks Linux/Bridges clones"
       note "HINT: HISTORICAL_OCR_ROOT=/path/to/historical-ocr bash scripts/remediate_historical_ocr_benchmark_symlink.sh"
