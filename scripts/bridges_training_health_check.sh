@@ -7,7 +7,7 @@
 #
 # Exit codes:
 #   0  bib-ocr tests pass and historical-ocr checks pass (or skipped)
-#   1  bib-ocr and/or historical-ocr issues found
+#   1  bib-ocr failures and/or historical-ocr issues (e.g. absolute benchmark symlink on upstream main)
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -74,12 +74,11 @@ BN="$HIST/data/benchmarks/blacknews_latest"
 if [[ -L "$BN" ]]; then
   target="$(readlink "$BN")"
   if [[ "$target" == /* ]]; then
+    fail "blacknews_latest is absolute ($target) — breaks Linux/Bridges clones"
+    note "HINT: merge contrib/historical-ocr-blacknews-latest.patch on historical-ocr main, or locally:"
+    note "  HISTORICAL_OCR_ROOT=/path/to/historical-ocr bash scripts/remediate_historical_ocr_benchmark_symlink.sh"
     if [[ -f "$PATCH" ]] && (cd "$HIST" && git apply --check "$PATCH" 2>/dev/null); then
-      note "WARN: blacknews_latest still absolute — merge contrib patch on historical-ocr main (or run remediate script locally)"
-      ok "contrib patch applies cleanly to historical-ocr checkout"
-    else
-      fail "blacknews_latest is absolute ($target) — breaks Linux/Bridges clones"
-      note "HINT: HISTORICAL_OCR_ROOT=/path/to/historical-ocr bash scripts/remediate_historical_ocr_benchmark_symlink.sh"
+      note "note: contrib patch applies cleanly to this checkout (ready for upstream merge)"
     fi
   else
     ok "blacknews_latest → $target"
