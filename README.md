@@ -73,6 +73,16 @@ bib-ocr paper.pdf --verbose
 bib-ocr paper.pdf --max-stage 2   # plaintext DOIs + hyperlinks only
 ```
 
+## Bridges / historical-OCR training health check
+
+If you use [historical-ocr](https://github.com/buzzcauldron/historical-ocr) Slurm helpers on Bridges, run:
+
+```bash
+bash scripts/bridges_training_health_check.sh
+```
+
+This runs `pytest`, checks `bash -n` on `scripts/bridges_*` / `submit_bridges_*`, and fails if `data/benchmarks/blacknews_latest` is an absolute path (broken on Linux checkouts). Apply `contrib/historical-ocr-blacknews-latest.patch` upstream or run `scripts/remediate_historical_ocr_benchmark_symlink.sh` against a local clone. To only warn on that symlink, set `BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS=1`.
+
 ## Sources
 
 See [SOURCES.md](SOURCES.md) for full upstream attribution.
