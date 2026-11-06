@@ -49,6 +49,12 @@ pytest -q
 
 Pipeline orchestration is covered with **mocked stages** (no real PDF/OCR). Full PDF tests are optional local runs.
 
+## Historical OCR / Bridges
+
+The [historical-ocr](https://github.com/buzzcauldron/historical-ocr) training stack includes Slurm scripts for HPC “Bridges” jobs. This repo carries **`contrib/historical-ocr-blacknews-latest.patch`**, which fixes a **benchmark symlink** (`data/benchmarks/blacknews_latest`) that pointed at an absolute macOS path and broke fresh Linux clones. After that symlink is **relative** on historical-ocr `main`, `bash scripts/bridges_training_health_check.sh` stays green; until then it reports failure so the regression is visible.
+
+To fix a local checkout: `HISTORICAL_OCR_ROOT=/path/to/historical-ocr bash scripts/remediate_historical_ocr_benchmark_symlink.sh`.
+
 ## Install
 
 ```bash
