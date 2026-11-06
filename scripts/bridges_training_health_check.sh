@@ -4,6 +4,7 @@
 # Usage:
 #   bash scripts/bridges_training_health_check.sh
 #   HISTORICAL_OCR_ROOT=/path/to/historical-ocr bash scripts/bridges_training_health_check.sh
+# Optional: BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS=1 to warn-only when upstream still has an absolute symlink.
 #
 # Exit codes:
 #   0  bib-ocr tests pass and historical-ocr checks pass (or skipped)
@@ -74,9 +75,14 @@ BN="$HIST/data/benchmarks/blacknews_latest"
 if [[ -L "$BN" ]]; then
   target="$(readlink "$BN")"
   if [[ "$target" == /* ]]; then
+    # Upstream historical-ocr main may still ship a developer-absolute symlink; contrib patch fixes it.
     if [[ -f "$PATCH" ]] && (cd "$HIST" && git apply --check "$PATCH" 2>/dev/null); then
-      note "WARN: blacknews_latest still absolute — merge contrib patch on historical-ocr main (or run remediate script locally)"
-      ok "contrib patch applies cleanly to historical-ocr checkout"
+      note "contrib patch applies cleanly (merge into historical-ocr or run remediate locally)"
+    else
+      note "contrib patch does not apply as-is — historical-ocr may have diverged; inspect $PATCH"
+    fi
+    if [[ "${BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS:-}" == "1" ]]; then
+      note "WARN: blacknews_latest is absolute ($target) — allowed via BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS=1"
     else
       fail "blacknews_latest is absolute ($target) — breaks Linux/Bridges clones"
       note "HINT: HISTORICAL_OCR_ROOT=/path/to/historical-ocr bash scripts/remediate_historical_ocr_benchmark_symlink.sh"
