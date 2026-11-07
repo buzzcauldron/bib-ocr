@@ -5,6 +5,9 @@
 #   bash scripts/bridges_training_health_check.sh
 #   HISTORICAL_OCR_ROOT=/path/to/historical-ocr bash scripts/bridges_training_health_check.sh
 #
+# Upstream historical-ocr may still ship an absolute macOS blacknews_latest symlink; that fails
+# this check unless remediated. Warn-only: BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS=1
+#
 # Exit codes:
 #   0  bib-ocr tests pass and historical-ocr checks pass (or skipped)
 #   1  bib-ocr and/or historical-ocr issues found
@@ -77,6 +80,10 @@ if [[ -L "$BN" ]]; then
     if [[ -f "$PATCH" ]] && (cd "$HIST" && git apply --check "$PATCH" 2>/dev/null); then
       note "WARN: blacknews_latest still absolute — merge contrib patch on historical-ocr main (or run remediate script locally)"
       ok "contrib patch applies cleanly to historical-ocr checkout"
+      if [[ "${BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS:-}" != "1" ]]; then
+        fail "upstream blacknews_latest is absolute ($target) — breaks Linux/Bridges clones"
+        note "HINT: merge contrib/historical-ocr-blacknews-latest.patch on historical-ocr, or remediate locally"
+      fi
     else
       fail "blacknews_latest is absolute ($target) — breaks Linux/Bridges clones"
       note "HINT: HISTORICAL_OCR_ROOT=/path/to/historical-ocr bash scripts/remediate_historical_ocr_benchmark_symlink.sh"
