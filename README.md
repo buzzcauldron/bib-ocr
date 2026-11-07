@@ -40,6 +40,22 @@ There is **no** ``min_hits`` early exit: after stages **1–2**, **ref_section**
 
 Stages **3–4** anchor on citation-density heuristics **target_pages** / **ref_section_start** — useful for locating reference blocks and footnote lanes on heterogeneous PDFs. Recognized bibliography headings (including **Bibliography**, **References**, **Works cited**, multilingual variants, ``Chapter N …`` / TOC page numbers, and hierarchical outline numbers such as ``3.2 …``) live in **`bib_ocr/section_heads.py`** — shared between the density heat-map boost and **`ref_section`** header stripping.
 
+## Historical-OCR training on Bridges
+
+Slurm helpers for [historical-ocr](https://github.com/buzzcauldron/historical-ocr) (`scripts/bridges_*.sbatch`, `submit_bridges_*.sh`) are validated from this repo:
+
+```bash
+bash scripts/bridges_training_health_check.sh
+```
+
+That runs bib-ocr pytest, `bash -n` on Bridges scripts (clone or `HISTORICAL_OCR_ROOT`), and checks that `data/benchmarks/blacknews_latest` is a **relative** symlink (absolute macOS paths break Linux/Bridges clones). Until that fix is on historical-ocr `main`, apply `contrib/historical-ocr-blacknews-latest.patch` or:
+
+```bash
+HISTORICAL_OCR_ROOT=/path/to/historical-ocr bash scripts/remediate_historical_ocr_benchmark_symlink.sh
+```
+
+`BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS=1` makes the symlink check warn-only when the contrib patch still applies cleanly.
+
 ## Tests
 
 ```bash
