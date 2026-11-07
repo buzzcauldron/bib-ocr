@@ -49,6 +49,22 @@ pytest -q
 
 Pipeline orchestration is covered with **mocked stages** (no real PDF/OCR). Full PDF tests are optional local runs.
 
+## Bridges / historical-OCR training
+
+PSC **Bridges** Slurm jobs for newspaper OCR training live in [historical-ocr](https://github.com/buzzcauldron/historical-ocr) (`scripts/bridges_*`, `submit_bridges_*`). From this repo:
+
+```bash
+bash scripts/bridges_training_health_check.sh
+```
+
+Runs bib-ocr pytest, `bash -n` on those Bridges scripts (clones historical-ocr when needed), and checks that `data/benchmarks/blacknews_latest` is a **relative** symlink (absolute macOS paths break Linux/Bridges checkouts). The check **fails** until upstream is fixed or your local tree is remediated; `BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS=1` downgrades that to a warning when `contrib/historical-ocr-blacknews-latest.patch` still applies.
+
+Local fix for a historical-ocr checkout:
+
+```bash
+HISTORICAL_OCR_ROOT=/path/to/historical-ocr bash scripts/remediate_historical_ocr_benchmark_symlink.sh
+```
+
 ## Install
 
 ```bash
