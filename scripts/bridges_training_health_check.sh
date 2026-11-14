@@ -8,6 +8,10 @@
 # Exit codes:
 #   0  bib-ocr tests pass and historical-ocr checks pass (or skipped)
 #   1  bib-ocr and/or historical-ocr issues found
+#
+# Env:
+#   BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS=1  warn only when upstream blacknews_latest
+#                                            is still an absolute path (default: fail)
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -75,9 +79,14 @@ if [[ -L "$BN" ]]; then
   target="$(readlink "$BN")"
   if [[ "$target" == /* ]]; then
     if [[ -f "$PATCH" ]] && (cd "$HIST" && git apply --check "$PATCH" 2>/dev/null); then
-      fail "blacknews_latest is absolute ($target) — breaks Linux/Bridges clones"
-      note "HINT: merge contrib/historical-ocr-blacknews-latest.patch on historical-ocr main, or:"
-      note "HINT: HISTORICAL_OCR_ROOT=/path/to/historical-ocr bash scripts/remediate_historical_ocr_benchmark_symlink.sh"
+      note "blacknews_latest is absolute ($target) — breaks Linux/Bridges clones"
+      note "HINT: apply contrib/historical-ocr-blacknews-latest.patch on historical-ocr main"
+      note "      or: HISTORICAL_OCR_ROOT=/path/to/historical-ocr bash scripts/remediate_historical_ocr_benchmark_symlink.sh"
+      if [[ "${BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS:-}" == "1" ]]; then
+        ok "contrib patch applies cleanly (BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS=1 — warn only)"
+      else
+        fail "upstream blacknews_latest still absolute; merge contrib patch on historical-ocr"
+      fi
     else
       fail "blacknews_latest is absolute ($target) — breaks Linux/Bridges clones (contrib patch does not apply)"
       note "HINT: HISTORICAL_OCR_ROOT=/path/to/historical-ocr bash scripts/remediate_historical_ocr_benchmark_symlink.sh"
