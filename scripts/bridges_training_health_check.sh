@@ -100,6 +100,34 @@ else
   note "WARN: blacknews_latest missing (benchmark only)"
 fi
 
+_check_upstream_blacknews() {
+  local raw url target
+  url="https://raw.githubusercontent.com/buzzcauldron/historical-ocr/main/data/benchmarks/blacknews_latest"
+  note "upstream historical-ocr main: blacknews_latest"
+  if ! raw="$(curl -fsSL --max-time 30 "$url" 2>/dev/null)"; then
+    note "WARN: could not fetch upstream blacknews_latest ($url)"
+    return 0
+  fi
+  target="$(printf '%s' "$raw" | tr -d '\r\n')"
+  if [[ -z "$target" ]]; then
+    note "WARN: upstream blacknews_latest empty"
+    return 0
+  fi
+  if [[ "$target" == /* ]]; then
+    note "upstream target is absolute ($target)"
+    note "HINT: merge contrib/historical-ocr-blacknews-latest.patch on historical-ocr main"
+    if [[ "${BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS:-}" == "1" ]]; then
+      ok "upstream still absolute (BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS=1 — warn only)"
+    else
+      fail "upstream blacknews_latest still absolute on GitHub main"
+    fi
+  else
+    ok "upstream blacknews_latest → $target"
+  fi
+}
+
+_check_upstream_blacknews
+
 if [[ "$failures" -gt 0 ]]; then
   note "$failures issue(s) — see above"
   exit 1
