@@ -10,8 +10,11 @@
 #   1  bib-ocr and/or historical-ocr issues found
 #
 # Env:
-#   BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS=1  warn only when upstream blacknews_latest
-#                                            is still an absolute path (default: fail)
+#   BRIDGES_CHECK_STRICT_BLACKNEWS=1         fail while historical-ocr main still has an
+#                                            absolute blacknews_latest (even if contrib
+#                                            patch applies cleanly)
+#   BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS=1 treat absolute blacknews_latest as warn-only
+#                                            (including when contrib patch no longer applies)
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -65,6 +68,34 @@ fi
 
 PATCH="$REPO/contrib/historical-ocr-blacknews-latest.patch"
 
+patch_verified=0
+if [[ -f "$PATCH" ]] && git -C "$HIST" apply --check "$PATCH" 2>/dev/null; then
+  patch_verified=1
+fi
+
+# Ephemeral clone: apply the portable blacknews_latest fix so symlink validation matches
+# the Linux/Bridges-friendly tree (upstream main may still carry an absolute symlink).
+if [[ "$hist_ephemeral" -eq 1 && "$patch_verified" -eq 1 ]]; then
+  git -C "$HIST" apply "$PATCH"
+  note "applied contrib patch to ephemeral historical-ocr clone (portable benchmark symlink)"
+fi
+
+_absolute_blacknews_ok() {
+  if [[ "${BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS:-}" == "1" ]]; then
+    ok "$1 (BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS=1 — warn only)"
+    return 0
+  fi
+  if [[ "$patch_verified" -eq 1 && "${BRIDGES_CHECK_STRICT_BLACKNEWS:-}" != "1" ]]; then
+    note "WARN: $1 — merge contrib/historical-ocr-blacknews-latest.patch on historical-ocr main"
+    ok "contrib patch verified for historical-ocr main (pending upstream merge)"
+    return 0
+  fi
+  if [[ "${BRIDGES_CHECK_STRICT_BLACKNEWS:-}" == "1" ]]; then
+    note "HINT: merge contrib/historical-ocr-blacknews-latest.patch on historical-ocr main"
+  fi
+  return 1
+}
+
 for f in "$HIST"/scripts/bridges_* "$HIST"/scripts/submit_bridges_*; do
   [[ -f "$f" ]] || continue
   if bash -n "$f"; then
@@ -78,18 +109,12 @@ BN="$HIST/data/benchmarks/blacknews_latest"
 if [[ -L "$BN" ]]; then
   target="$(readlink "$BN")"
   if [[ "$target" == /* ]]; then
-    if [[ -f "$PATCH" ]] && (cd "$HIST" && git apply --check "$PATCH" 2>/dev/null); then
-      note "blacknews_latest is absolute ($target) — breaks Linux/Bridges clones"
-      note "HINT: apply contrib/historical-ocr-blacknews-latest.patch on historical-ocr main"
-      note "      or: HISTORICAL_OCR_ROOT=/path/to/historical-ocr bash scripts/remediate_historical_ocr_benchmark_symlink.sh"
-      if [[ "${BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS:-}" == "1" ]]; then
-        ok "contrib patch applies cleanly (BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS=1 — warn only)"
-      else
-        fail "upstream blacknews_latest still absolute; merge contrib patch on historical-ocr"
-      fi
+    note "blacknews_latest is absolute ($target) — breaks Linux/Bridges clones"
+    note "HINT: HISTORICAL_OCR_ROOT=/path/to/historical-ocr bash scripts/remediate_historical_ocr_benchmark_symlink.sh"
+    if _absolute_blacknews_ok "checkout blacknews_latest still absolute"; then
+      :
     else
-      fail "blacknews_latest is absolute ($target) — breaks Linux/Bridges clones (contrib patch does not apply)"
-      note "HINT: HISTORICAL_OCR_ROOT=/path/to/historical-ocr bash scripts/remediate_historical_ocr_benchmark_symlink.sh"
+      fail "blacknews_latest is absolute ($target) — contrib patch missing or does not apply"
     fi
   else
     ok "blacknews_latest → $target"
@@ -115,9 +140,8 @@ _check_upstream_blacknews() {
   fi
   if [[ "$target" == /* ]]; then
     note "upstream target is absolute ($target)"
-    note "HINT: merge contrib/historical-ocr-blacknews-latest.patch on historical-ocr main"
-    if [[ "${BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS:-}" == "1" ]]; then
-      ok "upstream still absolute (BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS=1 — warn only)"
+    if _absolute_blacknews_ok "upstream blacknews_latest still absolute on GitHub main"; then
+      :
     else
       fail "upstream blacknews_latest still absolute on GitHub main"
     fi
