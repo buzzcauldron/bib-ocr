@@ -65,6 +65,19 @@ fi
 
 PATCH="$REPO/contrib/historical-ocr-blacknews-latest.patch"
 
+# Fresh clones often ship the broken absolute blacknews_latest symlink; auto-apply
+# the known fix so Bridges script checks run against a Linux-portable tree (upstream
+# GitHub main is still verified separately below).
+if [[ "$hist_ephemeral" -eq 1 && -f "$PATCH" ]]; then
+  if (cd "$HIST" && git apply --check "$PATCH" 2>/dev/null); then
+    note "ephemeral clone: applying contrib patch for portable blacknews_latest"
+    (cd "$HIST" && git apply "$PATCH")
+    ok "ephemeral clone remediated via contrib patch"
+  else
+    note "WARN: contrib patch does not apply on ephemeral clone"
+  fi
+fi
+
 for f in "$HIST"/scripts/bridges_* "$HIST"/scripts/submit_bridges_*; do
   [[ -f "$f" ]] || continue
   if bash -n "$f"; then
