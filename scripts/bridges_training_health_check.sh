@@ -65,6 +65,15 @@ fi
 
 PATCH="$REPO/contrib/historical-ocr-blacknews-latest.patch"
 
+if [[ "$hist_ephemeral" -eq 1 ]] && [[ -f "$PATCH" ]]; then
+  if (cd "$HIST" && git apply --check "$PATCH" 2>/dev/null); then
+    note "applying contrib patch to ephemeral historical-ocr clone (upstream main not merged yet)"
+    (cd "$HIST" && git apply "$PATCH")
+  else
+    note "WARN: contrib patch does not apply to ephemeral clone — skipping auto-apply"
+  fi
+fi
+
 for f in "$HIST"/scripts/bridges_* "$HIST"/scripts/submit_bridges_*; do
   [[ -f "$f" ]] || continue
   if bash -n "$f"; then
