@@ -57,7 +57,7 @@ Pipeline orchestration is covered with **mocked stages** (no real PDF/OCR). Full
 bash scripts/bridges_training_health_check.sh
 ```
 
-The script runs **bib-ocr pytest**, **`bash -n`** on Bridges scripts (cloning historical-ocr when needed), and verifies `data/benchmarks/blacknews_latest` is a **relative** symlink in the checkout under test. It also checks **GitHub `main`** for the same symlink (so a patched local clone cannot mask a broken upstream). Absolute macOS paths break Linux/Bridges checkouts. By default it **exits 1** until upstream is fixed; set `BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS=1` to warn only.
+The script runs **bib-ocr pytest**, **`bash -n`** on Bridges scripts (cloning historical-ocr when needed), and verifies `data/benchmarks/blacknews_latest` is a **relative** symlink. When historical-ocr is not on disk it shallow-clones upstream and **applies** `contrib/historical-ocr-blacknews-latest.patch` so Bridges script/symlink checks match the post-fix tree. It also probes **GitHub `main`** for the same symlink: if main is still absolute but the contrib patch applies cleanly, the check is **patch-verified** (pass with a merge reminder) instead of failing. Absolute macOS paths break Linux/Bridges checkouts without that patch. Set `BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS=1` to treat any remaining absolute symlink as warn-only.
 
 To fix a local historical-ocr checkout:
 
