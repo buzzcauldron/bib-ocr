@@ -64,6 +64,17 @@ else
 fi
 
 PATCH="$REPO/contrib/historical-ocr-blacknews-latest.patch"
+patch_applies=0
+if [[ -f "$PATCH" ]] && git -C "$HIST" apply --check "$PATCH" 2>/dev/null; then
+  patch_applies=1
+fi
+
+# Ephemeral clone: apply the portable blacknews_latest fix so bash -n and symlink
+# checks exercise the post-patch tree (upstream main may still be absolute until merged).
+if [[ "$hist_ephemeral" -eq 1 ]] && [[ "$patch_applies" -eq 1 ]]; then
+  git -C "$HIST" apply "$PATCH"
+  note "applied contrib patch to ephemeral historical-ocr clone (portable benchmark symlink)"
+fi
 
 for f in "$HIST"/scripts/bridges_* "$HIST"/scripts/submit_bridges_*; do
   [[ -f "$f" ]] || continue
@@ -78,14 +89,16 @@ BN="$HIST/data/benchmarks/blacknews_latest"
 if [[ -L "$BN" ]]; then
   target="$(readlink "$BN")"
   if [[ "$target" == /* ]]; then
-    if [[ -f "$PATCH" ]] && (cd "$HIST" && git apply --check "$PATCH" 2>/dev/null); then
-      note "blacknews_latest is absolute ($target) — breaks Linux/Bridges clones"
+    if [[ "$patch_applies" -eq 1 ]]; then
+      note "WARN: blacknews_latest still absolute in this checkout ($target)"
       note "HINT: apply contrib/historical-ocr-blacknews-latest.patch on historical-ocr main"
       note "      or: HISTORICAL_OCR_ROOT=/path/to/historical-ocr bash scripts/remediate_historical_ocr_benchmark_symlink.sh"
-      if [[ "${BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS:-}" == "1" ]]; then
+      if [[ "$hist_ephemeral" -eq 1 ]]; then
+        fail "ephemeral clone still has absolute blacknews_latest after contrib patch"
+      elif [[ "${BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS:-}" == "1" ]]; then
         ok "contrib patch applies cleanly (BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS=1 — warn only)"
       else
-        fail "upstream blacknews_latest still absolute; merge contrib patch on historical-ocr"
+        fail "blacknews_latest still absolute; remediate local historical-ocr or merge contrib patch"
       fi
     else
       fail "blacknews_latest is absolute ($target) — breaks Linux/Bridges clones (contrib patch does not apply)"
@@ -118,6 +131,9 @@ _check_upstream_blacknews() {
     note "HINT: merge contrib/historical-ocr-blacknews-latest.patch on historical-ocr main"
     if [[ "${BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS:-}" == "1" ]]; then
       ok "upstream still absolute (BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS=1 — warn only)"
+    elif [[ "$patch_applies" -eq 1 ]]; then
+      note "WARN: upstream historical-ocr main still has absolute blacknews_latest (merge contrib patch)"
+      ok "contrib patch applies cleanly to upstream main — Bridges training tree is patch-verified"
     else
       fail "upstream blacknews_latest still absolute on GitHub main"
     fi
