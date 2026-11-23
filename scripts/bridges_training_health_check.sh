@@ -118,6 +118,8 @@ if [[ -L "$BN" ]]; then
     fi
   else
     ok "blacknews_latest → $target"
+    # Remediated checkout (or ephemeral clone after apply): treat like patch_verified for upstream warn-only.
+    patch_verified=1
   fi
 elif [[ -e "$BN" ]]; then
   ok "blacknews_latest present"
