@@ -28,7 +28,18 @@ ok() { note "OK: $*"; }
 note "bib-ocr pytest"
 if ! python3 -c "import pytest" 2>/dev/null; then
   note "installing bib-ocr dev deps (pytest missing)"
-  pip install -e ".[dev]" -q
+  pip_ok=0
+  for attempt in 1 2 3; do
+    if pip install -e ".[dev]" -q; then
+      pip_ok=1
+      break
+    fi
+    note "pip install attempt $attempt failed — retrying"
+    sleep 2
+  done
+  if [[ "$pip_ok" -ne 1 ]]; then
+    fail "pip install -e '.[dev]'"
+  fi
 fi
 if ! python3 -m pytest -q; then
   fail "bib-ocr pytest"
