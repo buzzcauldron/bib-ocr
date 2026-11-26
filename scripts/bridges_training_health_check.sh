@@ -139,14 +139,17 @@ else
 fi
 
 _check_upstream_blacknews() {
-  local raw url target
-  url="https://raw.githubusercontent.com/buzzcauldron/historical-ocr/main/data/benchmarks/blacknews_latest"
+  local target
   note "upstream historical-ocr main: blacknews_latest"
-  if ! raw="$(curl -fsSL --max-time 30 "$url" 2>/dev/null)"; then
-    note "WARN: could not fetch upstream blacknews_latest ($url)"
+  # raw.githubusercontent.com follows symlinks and mis-reports absolute targets; read the git blob.
+  if ! git -C "$HIST" fetch --depth 1 origin main 2>/dev/null; then
+    note "WARN: could not fetch origin main for upstream blacknews_latest"
     return 0
   fi
-  target="$(printf '%s' "$raw" | tr -d '\r\n')"
+  if ! target="$(git -C "$HIST" cat-file -p "origin/main:data/benchmarks/blacknews_latest" 2>/dev/null | tr -d '\r\n')"; then
+    note "WARN: could not read upstream blacknews_latest blob on origin/main"
+    return 0
+  fi
   if [[ -z "$target" ]]; then
     note "WARN: upstream blacknews_latest empty"
     return 0
