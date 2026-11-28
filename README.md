@@ -57,7 +57,7 @@ Pipeline orchestration is covered with **mocked stages** (no real PDF/OCR). Full
 bash scripts/bridges_training_health_check.sh
 ```
 
-The script runs **bib-ocr pytest**, **`bash -n`** on Bridges scripts (cloning historical-ocr when needed), applies `contrib/historical-ocr-blacknews-latest.patch` on an **ephemeral** clone, and verifies `data/benchmarks/blacknews_latest` is a **relative** symlink in the tree under test. It also checks **GitHub `main`** for the same symlink (so a patched local clone cannot mask a broken upstream). Absolute macOS paths break Linux/Bridges checkouts. By default cron **passes** when `contrib/historical-ocr-blacknews-latest.patch` still applies to upstream `main` (known pending merge); set `BRIDGES_CHECK_STRICT_BLACKNEWS=1` to **exit 1** until upstream is fixed, or `BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS=1` to warn only even if the patch drifts.
+The script runs **bib-ocr pytest**, **`bash -n`** on Bridges scripts (cloning historical-ocr when needed), and verifies `data/benchmarks/blacknews_latest` is a **relative** symlink in the checkout under test. On an **ephemeral** clone it still applies `contrib/historical-ocr-blacknews-latest.patch` when that patch applies to `main` (legacy macOS absolute symlinks). It also checks **GitHub `main`** via `raw.githubusercontent.com` (so a patched local clone cannot mask a broken upstream). Upstream `main` already uses a relative `blacknews_latest`; the contrib patch is kept for older checkouts. Set `BRIDGES_CHECK_STRICT_BLACKNEWS=1` to **exit 1** while upstream still has an absolute symlink, or `BRIDGES_CHECK_ALLOW_ABSOLUTE_BLACKNEWS=1` to warn only.
 
 To fix a local historical-ocr checkout:
 
@@ -65,7 +65,7 @@ To fix a local historical-ocr checkout:
 HISTORICAL_OCR_ROOT=/path/to/historical-ocr bash scripts/remediate_historical_ocr_benchmark_symlink.sh
 ```
 
-Upstream maintainer merge: apply `contrib/historical-ocr-blacknews-latest.patch` on historical-ocr `main`.
+If upstream `main` regresses to an absolute symlink, apply `contrib/historical-ocr-blacknews-latest.patch` on historical-ocr `main`.
 
 ## Install
 
