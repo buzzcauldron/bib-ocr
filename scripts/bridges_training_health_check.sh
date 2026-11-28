@@ -84,8 +84,7 @@ if [[ -f "$PATCH" ]] && git -C "$HIST" apply --check "$PATCH" 2>/dev/null; then
   patch_verified=1
 fi
 
-# Ephemeral clone: apply the portable blacknews_latest fix so symlink validation matches
-# the Linux/Bridges-friendly tree (upstream main may still carry an absolute symlink).
+# Ephemeral clone: apply contrib patch when it still applies (legacy absolute symlinks on main).
 if [[ "$hist_ephemeral" -eq 1 && "$patch_verified" -eq 1 ]]; then
   git -C "$HIST" apply "$PATCH"
   note "applied contrib patch to ephemeral historical-ocr clone (portable benchmark symlink)"
